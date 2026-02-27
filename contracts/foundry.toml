@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+]
+solc_version = "0.8.20"
+
+[rpc_endpoints]
+arc_testnet = "https://rpc.testnet.arc.network/${ARC_TESTNET_RPC_KEY}"
+base_sepolia = "https://sepolia.base.org"
+
+[etherscan]
+arc_testnet = { key = "no-api-key", url = "https://explorer.testnet.arc.network/api" }
