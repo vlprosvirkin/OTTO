@@ -1,0 +1,32 @@
+{
+  // OpenClaw config for Arc Wallet Agent
+  // Secrets are read from env vars — never hardcode them here
+
+  "ai": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": { "source": "env", "id": "OPENAI_API_KEY" }
+  },
+
+  "workspace": {
+    "agentMd": "agent.md",
+    "skillsDir": "skills"
+  },
+
+  "channels": {
+    "telegram": {
+      "token": { "source": "env", "id": "TELEGRAM_BOT_TOKEN" },
+      "adminChatId": { "source": "env", "id": "TELEGRAM_ADMIN_CHAT_ID" }
+    }
+  },
+
+  "skills": {
+    "entries": {
+      "arc-balance": { "enabled": true },
+      "arc-wallet": { "enabled": true },
+      "arc-transfer": { "enabled": true },
+      "arc-gateway": { "enabled": true },
+      "arc-x402": { "enabled": true }
+    }
+  }
+}

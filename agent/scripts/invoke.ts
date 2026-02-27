@@ -1,0 +1,163 @@
+#!/usr/bin/env tsx
+/**
+ * CLI bridge: calls arc-wallet-mcp handlers from shell scripts.
+ *
+ * Uses dynamic imports so modules (especially Supabase) are only
+ * loaded when the specific tool is actually called.
+ *
+ * Usage:
+ *   tsx invoke.ts <tool_name> <json_args>
+ *
+ * Example:
+ *   tsx invoke.ts get_gateway_balance '{"address":"0xabc..."}'
+ */
+
+// Load .env from arc-openclaw root (works regardless of cwd)
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+import { readFileSync } from "fs";
+
+const _SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const _ROOT = resolve(_SCRIPT_DIR, "..");
+try {
+  for (const line of readFileSync(resolve(_ROOT, ".env"), "utf-8").split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq < 1) continue;
+    const k = line.slice(0, eq).trim();
+    const v = line.slice(eq + 1).trim();
+    if (k && v && !process.env[k]) process.env[k] = v;
+  }
+} catch { /* .env optional */ }
+
+const MCP = resolve(_SCRIPT_DIR, "../../arc-wallet-mcp/src/tools");
+
+type AnyArgs = Record<string, unknown>;
+
+const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
+  // ── Balance (no Supabase) ──────────────────────────────────────────────
+  get_gateway_balance: async (a) => {
+    const { handleGetGatewayBalance } = await import(`${MCP}/balance.js`);
+    return handleGetGatewayBalance(a as { address: string });
+  },
+  get_usdc_balance: async (a) => {
+    const { handleGetUsdcBalance } = await import(`${MCP}/balance.js`);
+    return handleGetUsdcBalance(a as { address: string; chain: string });
+  },
+  check_wallet_gas: async (a) => {
+    const { handleCheckWalletGas } = await import(`${MCP}/balance.js`);
+    return handleCheckWalletGas(a as { wallet_id: string; chain: string });
+  },
+
+  // ── Gateway (no Supabase) ──────────────────────────────────────────────
+  get_gateway_info: async () => {
+    const { handleGetGatewayInfo } = await import(`${MCP}/gateway.js`);
+    return handleGetGatewayInfo();
+  },
+  get_supported_chains: async () => {
+    const { handleGetSupportedChains } = await import(`${MCP}/gateway.js`);
+    return handleGetSupportedChains();
+  },
+  get_transfer_status: async (a) => {
+    const { handleGetTransferStatus } = await import(`${MCP}/gateway.js`);
+    return handleGetTransferStatus(a as { transfer_id: string });
+  },
+
+  // ── Deposit / Withdraw (uses Supabase optionally) ─────────────────────
+  deposit_usdc: async (a) => {
+    const { handleDepositUsdc } = await import(`${MCP}/deposit.js`);
+    return handleDepositUsdc(a as { wallet_id: string; chain: string; amount_usdc: number; user_id?: string });
+  },
+  withdraw_usdc: async (a) => {
+    const { handleWithdrawUsdc } = await import(`${MCP}/deposit.js`);
+    return handleWithdrawUsdc(a as { wallet_id: string; chain: string; amount_usdc: number });
+  },
+
+  // ── Transfer (uses Supabase optionally) ───────────────────────────────
+  transfer_usdc_eoa: async (a) => {
+    const { handleTransferUsdcEoa } = await import(`${MCP}/transfer.js`);
+    return handleTransferUsdcEoa(a as { user_id: string; depositor_wallet_id: string; source_chain: string; destination_chain: string; amount_usdc: number; recipient_address?: string });
+  },
+  transfer_usdc_custodial: async (a) => {
+    const { handleTransferUsdcCustodial } = await import(`${MCP}/transfer.js`);
+    return handleTransferUsdcCustodial(a as { wallet_id: string; source_chain: string; destination_chain: string; amount_usdc: number; recipient_address?: string; user_id?: string });
+  },
+  execute_gateway_mint: async (a) => {
+    const { handleExecuteGatewayMint } = await import(`${MCP}/transfer.js`);
+    return handleExecuteGatewayMint(a as { wallet_id: string; destination_chain: string; attestation: string; signature: string });
+  },
+
+  // ── Wallet (uses Supabase) ─────────────────────────────────────────────
+  create_wallet_set: async (a) => {
+    const { handleCreateWalletSet } = await import(`${MCP}/wallet.js`);
+    return handleCreateWalletSet(a as { name: string });
+  },
+  create_multichain_wallet: async (a) => {
+    const { handleCreateMultichainWallet } = await import(`${MCP}/wallet.js`);
+    return handleCreateMultichainWallet(a as { wallet_set_id: string; user_id?: string });
+  },
+  get_wallet_info: async (a) => {
+    const { handleGetWalletInfo } = await import(`${MCP}/wallet.js`);
+    return handleGetWalletInfo(a as { wallet_id: string });
+  },
+  get_eoa_wallets: async (a) => {
+    const { handleGetEoaWallets } = await import(`${MCP}/wallet.js`);
+    return handleGetEoaWallets(a as { user_id: string });
+  },
+  init_eoa_wallet: async (a) => {
+    const { handleInitEoaWallet } = await import(`${MCP}/wallet.js`);
+    return handleInitEoaWallet(a as { user_id: string; blockchain?: string });
+  },
+  get_transaction_history: async (a) => {
+    const { handleGetTransactionHistory } = await import(`${MCP}/wallet.js`);
+    return handleGetTransactionHistory(a as { user_id: string; limit?: number; tx_type?: string });
+  },
+  get_user_wallets: async (a) => {
+    const { handleGetUserWallets } = await import(`${MCP}/wallet.js`);
+    return handleGetUserWallets(a as { user_id: string });
+  },
+
+  // ── x402 (no Supabase) ────────────────────────────────────────────────
+  x402_fetch: async (a) => {
+    const { handleX402Fetch } = await import(`${MCP}/x402.js`);
+    return handleX402Fetch(a as { url: string; method?: string; body?: string });
+  },
+  x402_payer_info: async () => {
+    const { handleX402PayerInfo } = await import(`${MCP}/x402.js`);
+    return handleX402PayerInfo({} as never);
+  },
+};
+
+async function main() {
+  const [, , toolName, argsJson] = process.argv;
+
+  if (!toolName) {
+    console.error("Usage: tsx invoke.ts <tool_name> [json_args]");
+    console.error("\nAvailable tools:");
+    Object.keys(HANDLERS).forEach((t) => console.error(`  ${t}`));
+    process.exit(1);
+  }
+
+  const handler = HANDLERS[toolName];
+  if (!handler) {
+    console.error(`Unknown tool: ${toolName}`);
+    process.exit(1);
+  }
+
+  let args: AnyArgs = {};
+  if (argsJson) {
+    try {
+      args = JSON.parse(argsJson);
+    } catch {
+      console.error(`Invalid JSON args: ${argsJson}`);
+      process.exit(1);
+    }
+  }
+
+  const result = await handler(args);
+  console.log(result);
+}
+
+main().catch((err) => {
+  console.error("Error:", err.message ?? err);
+  process.exit(1);
+});

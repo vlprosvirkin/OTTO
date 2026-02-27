@@ -1,0 +1,21 @@
+{
+  "name": "arc-openclaw",
+  "version": "1.0.0",
+  "description": "OpenClaw AI agent for Arc Multichain Wallet — autonomous USDC treasury management via MCP",
+  "type": "module",
+  "scripts": {
+    "setup-payer": "tsx scripts/setup_x402_payer.ts",
+    "setup-payer:show": "tsx scripts/setup_x402_payer.ts --show",
+    "setup-payer:balance": "tsx scripts/setup_x402_payer.ts --balance"
+  },
+  "dependencies": {
+    "@x402/evm": "^2.5.0",
+    "@x402/express": "^2.5.0",
+    "express": "^5.2.1",
+    "viem": "^2.44.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "tsx": "^4.19.2"
+  }
+}

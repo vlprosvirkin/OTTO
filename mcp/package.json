@@ -1,0 +1,39 @@
+{
+  "name": "arc-wallet-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Arc Multichain Wallet - USDC cross-chain operations via Circle Gateway",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "arc-wallet-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "@supabase/supabase-js": "latest",
+    "@types/express": "^5.0.6",
+    "@x402/core": "^2.5.0",
+    "@x402/evm": "^2.5.0",
+    "@x402/express": "^2.5.0",
+    "@x402/fetch": "^2.5.0",
+    "express": "^5.2.1",
+    "viem": "^2.44.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
+  }
+}
