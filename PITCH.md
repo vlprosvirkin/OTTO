@@ -251,6 +251,128 @@ Agent:
 
 ---
 
+## Use Cases
+
+### Remote Team Payroll
+A DAO or startup pays contributors in USDC across multiple chains every two weeks. Today this means someone opens a wallet, pastes addresses, approves one transaction at a time, pays gas, and waits. With OTTO: the CFO sends one Telegram message, OTTO confirms the total, and runs all transfers in sequence — with a receipt for each one.
+
+> "Pay Alice 200 USDC on Arc, Bob 150 USDC on Base Sepolia, Carol 75 USDC on Arc."
+> OTTO: executed in 3 transactions. No wallet open. No gas. Full log in Telegram.
+
+### Autonomous Liquidity Management
+A protocol has smart contract vaults on Arc Testnet and Base Sepolia. When one vault runs low, the team manually bridges funds — which is slow and error-prone. With OTTO: set a threshold once, and the agent continuously monitors balances, moving liquidity the moment a chain drops below the minimum. The team wakes up to a Telegram notification, not a broken vault.
+
+### Agent-to-Agent API Economy (x402)
+An AI trading agent needs real-time price data from a premium oracle. Today this requires a subscription, API key management, and manual renewal. With OTTO + x402: the agent pays per-query in USDC, automatically, with no subscription or human approval. The oracle gets paid instantly. The agent gets data instantly. No intermediary.
+
+> This is the **new economic primitive** for AI agents: machines paying machines, in USDC, over HTTP. OTTO is the first treasury agent built around it.
+
+### Vendor Payments & Subscriptions
+A web3 company uses several x402-enabled SaaS tools — analytics, risk scoring, compliance checks. Instead of managing API keys and credit cards for each, the CFO configures OTTO with monthly spending limits per vendor. OTTO pays each tool automatically per-use, tracks spend against budget, and alerts when a vendor approaches its limit.
+
+### Treasury Reporting on Demand
+The team lead asks for a snapshot of the treasury at any time — mid-meeting, from a phone. OTTO responds in seconds with balances across all chains, recent inflows/outflows, and a summary of x402 payments made. No dashboard login. No spreadsheet. Just a Telegram message.
+
+---
+
+## Why This Matters
+
+**Treasuries don't sleep.** Chains don't pause for timezones. A custodial wallet sitting idle on one chain while another runs dry is a risk and an opportunity cost — but checking and rebalancing manually is not scalable.
+
+**AI agents are about to manage real money.** The question is not whether to give agents financial autonomy — it's how to do it safely. OTTO's answer: give the agent a clearly defined role, a set of tools with known capabilities, and smart contract-level limits that no instruction can override.
+
+**x402 makes agentic commerce real.** Every AI pipeline that touches data, APIs, or compute eventually hits a payment wall. Today that wall stops agents cold — a human has to step in with a credit card. x402 + OTTO removes that wall: the agent pays, continues, and reports. This is how AI systems become genuinely autonomous.
+
+---
+
+## Security Architecture
+
+### The Core Principle: Trust the Contract, Not the Agent
+
+OTTO is designed on one fundamental assumption: **the AI can make mistakes, but the smart contract cannot be overridden.** Every financial limit is enforced on-chain, not in the agent's prompt.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  OTTO (Claude)                       │
+│  "Transfer 50,000 USDC"  ← can ask anything         │
+└───────────────────────────────┬─────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────┐
+│              Circle Smart Contract Account           │
+│                                                      │
+│  Per-transaction limit:    ≤ 500 USDC  ✗ BLOCKED    │
+│  Daily spend limit:        ≤ 2,000 USDC             │
+│  Whitelisted recipients:   [Alice, Bob, Carol]       │
+│  Allowed chains:           [arcTestnet, baseSepolia] │
+│  Admin override required:  transfers > 1,000 USDC   │
+└─────────────────────────────────────────────────────┘
+```
+
+Even if the agent's reasoning is manipulated or the prompt is compromised, the transaction will be **rejected at the contract level** before any USDC moves. The rules are not in the AI — they are in the blockchain.
+
+### Layered Security Model
+
+**Layer 1 — Smart Contract Limits (Circle SCA)**
+Circle's Developer Controlled Wallets use Smart Contract Accounts (ERC-4337) with programmable policy enforcement:
+- Per-transaction spending caps (e.g., max 500 USDC per transfer)
+- Daily/weekly cumulative limits per wallet
+- Recipient address whitelisting — the agent can only send to pre-approved addresses
+- Chain restrictions — transfers only to permitted destination chains
+- Cooldown periods between large transfers
+
+These rules are set by the organization, stored on-chain, and enforced by the contract — not by the agent's instructions. **The agent cannot bypass them.**
+
+**Layer 2 — Agent Rules (agent.md)**
+The agent's behavior is governed by its system prompt (`agent.md`):
+- Explicit confirmation required for any transfer > 1 USDC
+- No execution without user approval ("да" / "yes")
+- x402 auto-pay only for amounts < 0.01 USDC
+- Private keys and API keys never exposed in output
+
+**Layer 3 — x402 Payer Wallet (Minimal Exposure)**
+The x402 payer wallet is a separate EOA funded with a small working balance (e.g., 5–20 USDC). It is:
+- Isolated from main treasury wallets
+- Used exclusively for micro-payments (< 0.01 USDC per call)
+- Easily replaceable — if compromised, the main treasury is unaffected
+- Monitored by the agent itself via `x402_payer_info`
+
+**Layer 4 — Circle DCW (No Key Custody)**
+For all treasury operations, private keys never leave Circle's infrastructure. The agent calls Circle's API — it cannot extract or export keys. This eliminates the largest attack surface in crypto: stolen private keys.
+
+### What the Agent Can and Cannot Do
+
+| Action | Agent Can Do | Requires |
+|--------|-------------|---------|
+| Check balances | ✅ Always | — |
+| Fetch x402 data | ✅ Auto | < 0.01 USDC in payer wallet |
+| Transfer ≤ 500 USDC | ✅ With confirmation | User "да/yes" + contract allowance |
+| Transfer > 500 USDC | ❌ Blocked | Contract rejects regardless of prompt |
+| Send to unknown address | ❌ Blocked | Not in whitelist — contract rejects |
+| Send to non-whitelisted chain | ❌ Blocked | Contract rejects |
+| Export private keys | ❌ Impossible | Circle DCW — keys never leave Circle |
+| Exceed daily limit | ❌ Blocked | Contract enforces cumulative cap |
+
+### Organizational Policy as Code
+
+OTTO's spending rules are not a trust relationship — they are **code on a blockchain**. The organization sets limits once through Circle's API, and those limits become immutable constraints:
+
+```typescript
+// Example: Configure SCA policy for OTTO
+await circle.updateWalletPolicy({
+  walletId: "otto-treasury-wallet",
+  policy: {
+    maxTransactionAmount: { amount: "500", currency: "USDC" },
+    dailyLimit: { amount: "2000", currency: "USDC" },
+    allowedRecipients: ["0xAlice...", "0xBob...", "0xCarol..."],
+    allowedChains: ["arcTestnet", "baseSepolia"],
+  }
+});
+```
+
+Any instruction to OTTO — whether from a legitimate user, a compromised Telegram account, or a prompt injection attack — that exceeds these parameters will fail at the contract layer. Not because the agent refuses, but because the blockchain refuses.
+
+---
+
 ## What's Built vs What's Needed
 
 | Component | Status | Notes |
