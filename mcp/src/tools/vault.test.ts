@@ -18,7 +18,7 @@ vi.mock("../lib/circle/gateway-sdk.js", () => ({
   arcTestnet: {
     id: 5042002,
     name: "Arc Testnet",
-    rpcUrls: { default: { http: ["https://rpc.testnet.arc.network"] } },
+    rpcUrls: { default: { http: ["https://rpc.blockdaemon.testnet.arc.network"] } },
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     blockExplorers: { default: { url: "https://explorer.testnet.arc.network" } },
   },
