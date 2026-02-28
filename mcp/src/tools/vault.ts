@@ -910,6 +910,8 @@ const CHAIN_IDS: Record<SupportedChain, number> = {
   avalancheFuji: 43113,
 };
 
+const SIGN_BASE_URL = process.env.OTTO_SIGN_URL ?? "https://ottoarc.xyz/sign";
+
 /**
  * Encode calldata for an admin-only vault operation.
  * Returns the raw calldata that must be signed by the vault admin (user's own wallet).
@@ -992,17 +994,24 @@ export async function handleEncodeAdminTx(params: EncodeAdminTxParams): Promise<
       throw new Error(`Unknown admin function: ${fn}`);
   }
 
+  const chainId = CHAIN_IDS[chain];
+  const signingUrl = `${SIGN_BASE_URL}?to=${vaultAddr}&data=${encodeURIComponent(data)}&chainId=${chainId}&desc=${encodeURIComponent(description)}`;
+
   return JSON.stringify({
     function: fn,
     description,
     to: vaultAddr,
     data,
     chain,
-    chainId: CHAIN_IDS[chain],
+    chainId,
+    signing_url: signingUrl,
     instructions: [
-      "This is an admin-only operation. Sign and send this transaction from your wallet (you are the admin).",
-      `Contract: ${vaultAddr} on ${CHAIN_NAMES[chain]}`,
-      "Options: MetaMask → Send Transaction, Frame, ethers.js, cast send --private-key <YOUR_KEY>",
+      "Admin-only operation — requires your wallet signature.",
+      `1. Open: ${signingUrl}`,
+      "2. Connect your admin wallet (MetaMask / Rabby / Frame)",
+      "3. Click Sign & Send — done.",
+      "",
+      "Or via CLI:",
       `cast send ${vaultAddr} ${data} --rpc-url <RPC> --private-key <YOUR_KEY>`,
     ].join("\n"),
   }, null, 2);

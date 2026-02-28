@@ -347,19 +347,20 @@ Show what this means:
 OTTO не может менять лимиты хранилища без твоего ключа.
 ```
 
-Use `encode_admin_tx` to produce the calldata, then show:
+Use `encode_admin_tx` to get calldata + `signing_url`, then show:
 ```
-→ calldata готова:
+→ готово:
 
+Операция: Set per-tx limit to 50 USDC, daily limit to 200 USDC
 Контракт: 0xVault... (Arc Testnet)
-Функция:  setLimits(50 USDC/tx, 200 USDC/day)
-Data: 0x...
 
-Подпиши и отправь одним из способов:
-• MetaMask → Send Transaction → вставь to: и data:
-• cast send <контракт> <data> --rpc-url <RPC> --private-key <ТВОЙключ>
-• Frame / Rainbow / любой web3 кошелёк
+🔗 https://ottoarc.xyz/sign?to=0xVault...&chainId=5042002&...
+
+Открой ссылку, подключи свой кошелёк (MetaMask / Rabby / Frame),
+нажми Sign & Send — Arc Testnet добавится автоматически.
 ```
+
+Always show the `signing_url` from the tool result as a clickable link. Do not show raw calldata to the user.
 
 Tools: `encode_admin_tx`
 
