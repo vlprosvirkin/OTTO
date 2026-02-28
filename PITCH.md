@@ -23,14 +23,16 @@ This is brittle, slow, and doesn't scale. Every step requires a human to open a 
 
 **OTTO** is a Claude-powered AI agent that autonomously manages a multi-chain USDC treasury.
 
-It monitors balances, moves funds cross-chain via Circle Gateway, pays for external services using the x402 nanopayment protocol, executes payroll runs, and reports every action to the team over Telegram — all without human intervention.
+It monitors balances, moves funds cross-chain via Circle Gateway, pays for external services using the x402 nanopayment protocol, fetches real-time price feeds from Stork Oracle, invests idle USDC into yield-bearing USYC (Hashnote tokenized T-bills), executes payroll runs, and reports every action to the team over Telegram — all without human intervention.
 
 ```
 Human: "Rebalance the treasury and pay the team"
 
 Agent: checks balances on Arc Testnet, Base Sepolia, Avalanche Fuji
+       → queries ETH/USD from Stork Oracle (on-chain + REST)
        → moves 15 USDC from Base to Arc (liquidity low)
-       → fetches ETH/USD price feed (pays 0.001 USDC via x402, auto)
+       → fetches gas oracle (pays 0.001 USDC via x402, auto)
+       → invests 20 idle USDC into USYC (tokenized T-bills, earning yield)
        → sends: Alice 10 USDC, Bob 15 USDC, Carol 5 USDC
        → posts summary to Telegram
 
@@ -44,65 +46,55 @@ Done. Zero manual steps. Zero gas fees.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                     User Interface                               │
-│              Telegram Bot  ·  CLI  ·  Web (future)               │
+│              Telegram Bot  ·  CLI  ·  Web (ottoarc.xyz)          │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ natural language command
 ┌───────────────────────────────▼──────────────────────────────────┐
-│                  OTTO Agent Framework                        │
+│                  OTTO Agent Framework (OpenClaw)                  │
 │                                                                  │
 │  ┌─────────────────┐    ┌────────────────────────────────────┐   │
 │  │   agent.md      │    │         openclaw.json              │   │
 │  │   Role, rules,  │    │  provider: Claude (Anthropic)      │   │
 │  │   chain ref,    │    │  channel:  Telegram                │   │
-│  │   tool docs     │    │  skills:   arc-balance, arc-wallet │   │
-│  └─────────────────┘    │            arc-transfer, arc-x402  │   │
-│                         └────────────────────────────────────┘   │
+│  │   tool docs     │    │  skills:   9 skill modules         │   │
+│  └─────────────────┘    └────────────────────────────────────┘   │
 │                                                                  │
-│  Skill Scripts (bash):                                           │
-│  arc-balance  ·  arc-wallet  ·  arc-transfer                     │
-│  arc-gateway  ·  arc-x402  ·  arc-vault 🔒                       │
+│  Skill Scripts (bash) — 9 modules:                               │
+│  arc-balance  ·  arc-wallet  ·  arc-transfer  ·  arc-gateway     │
+│  arc-x402 ✨  ·  arc-vault 🔒  ·  arc-rebalancer 🔄              │
+│  arc-oracle 📈  ·  arc-yield 📊                                   │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ tsx invoke.ts <tool> <args>
 ┌───────────────────────────────▼──────────────────────────────────┐
 │                    arc-wallet-mcp                                │
-│              MCP Server (Model Context Protocol)                 │
+│         MCP Server (Model Context Protocol) — 41 tools           │
 │                                                                  │
-│  ┌──────────────┬──────────────┬─────────────┬────────────────┐  │
-│  │   balance    │   wallet     │  transfer   │  vault 🔒      │  │
-│  │              │              │             │                │  │
-│  │ get_usdc_    │ create_      │ transfer_   │ vault_status   │  │
-│  │ balance      │ wallet_set   │ usdc_       │                │  │
-│  │              │              │ custodial   │ vault_transfer │  │
-│  │ get_gateway_ │ create_      │             │                │  │
-│  │ balance      │ multichain_  │ transfer_   │ vault_can_     │  │
-│  │              │ wallet       │ usdc_eoa    │ transfer       │  │
-│  │ check_wallet │              │             │                │  │
-│  │ _gas         │ get_wallet_  │ deposit_    ├────────────────┤  │
-│  │              │ info         │ usdc        │     x402 ✨    │  │
-│  │              │              │             │                │  │
-│  │              │ get_user_    │ withdraw_   │ x402_fetch     │  │
-│  │              │ wallets      │ usdc        │                │  │
-│  │              │              │             │ x402_payer_    │  │
-│  │              │ get_eoa_     │ get_        │ info           │  │
-│  │              │ wallets      │ transfer_   │                │  │
-│  │              │              │ status      │                │  │
-│  └──────────────┴──────────────┴─────────────┴────────────────┘  │
-└──────────┬────────────────────────────┬────────────────┬─────────┘
-           │                            │                │
-┌──────────▼──────────┐  ┌─────────────▼──────┐  ┌──────▼──────────┐
-│  Circle Developer   │  │  Circle Gateway    │  │  x402 Server    │
-│  Controlled Wallets │  │  Cross-chain USDC  │  │  (demo oracle)  │
-│  SCA + EOA          │  │  unified balance   │  │  HTTP 402 →     │
-│  Custodial          │  │  burn/mint bridge  │  │  auto USDC pay  │
-└─────────────────────┘  └────────────────────┘  └─────────────────┘
-           │
-┌──────────▼──────────────────────────────────────────────────────┐
-│                  OTTOVault 🔒 (Arc Testnet)                      │
+│  ┌────────────┬────────────┬────────────┬────────────────────┐   │
+│  │  balance   │  wallet    │ transfer   │  vault 🔒           │   │
+│  │  gateway   │  deposit   │            │  (15 handlers)     │   │
+│  ├────────────┼────────────┼────────────┼────────────────────┤   │
+│  │  x402 ✨   │ stork 📈   │ usyc 📊    │  rebalance 🔄      │   │
+│  │  fetch +   │ REST API + │ rate +     │  cross-chain       │   │
+│  │  payer     │ on-chain   │ balance +  │  vault health      │   │
+│  │  info      │ aggregator │ deposit +  │                    │   │
+│  │            │            │ redeem     │                    │   │
+│  └────────────┴────────────┴────────────┴────────────────────┘   │
+└──────┬──────────────┬──────────────┬──────────────┬──────────────┘
+       │              │              │              │
+┌──────▼────────┐ ┌───▼──────────┐ ┌▼────────────┐ ┌▼───────────────┐
+│ Circle DCW    │ │ Circle       │ │ Stork Oracle│ │ Hashnote USYC  │
+│ SCA + EOA     │ │ Gateway      │ │ REST API +  │ │ Tokenized      │
+│ Custodial     │ │ Cross-chain  │ │ On-chain    │ │ US T-bills     │
+│ wallets       │ │ USDC         │ │ Aggregator  │ │ Yield on USDC  │
+└───────────────┘ └──────────────┘ └─────────────┘ └────────────────┘
+       │
+┌──────▼──────────────────────────────────────────────────────────┐
+│                  OTTOVault 🔒 (3 chains, verified)               │
 │  Solidity contract · 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA │
 │                                                                  │
 │  Holds org USDC · Per-tx cap: 10 USDC · Daily cap: 100 USDC    │
 │  Agent role enforced on-chain · Whitelist · Emergency pause     │
-│  No prompt can override these limits — the EVM enforces them    │
+│  adminTransfer · No prompt can override — the EVM enforces      │
 └─────────────────────────────────────────────────────────────────┘
                                   │
                     ┌─────────────┼──────────────┐
@@ -202,9 +194,58 @@ const response = await paymentFetch("https://oracle/eth-price");
 
 The agent's payer wallet (`0xA9A4...Ae96e`) holds USDC on Arc Testnet and pays for services using EIP-3009 authorization signatures — no gas required.
 
+### Stork Oracle — Real-Time Price Feeds
+
+Stork is a decentralized oracle network providing low-latency price feeds. OTTO uses Stork for real-time market data through two channels:
+
+1. **REST API** — Fast off-chain price lookups (sub-second latency, requires API key)
+2. **On-chain aggregator** — Trustless on-chain price data on Arc Testnet (contract: `0xacC0...0d62`)
+
+The agent calls `stork_price` for quick off-chain lookups and `stork_onchain_price` for verified on-chain data. Both fall back gracefully — REST to mock data if the API key is missing, on-chain to an error with a hint.
+
+```
+Agent needs to decide whether to rebalance:
+  → stork_price("ETHUSD") → $2,847.42 (Stork REST, 200ms)
+  → stork_onchain_price("ETHUSD", "arcTestnet") → $2,847.38 (on-chain, verified)
+  → price delta < threshold → hold position
+```
+
+This replaces the demo oracle for real use cases. The agent gets institutional-grade price data directly from Stork's network — the same oracle infrastructure used by DeFi protocols in production.
+
+### USYC — Yield on Idle Treasury USDC
+
+USYC is Hashnote's tokenized representation of short-term US Treasury bills. Instead of letting USDC sit idle in the vault, OTTO can invest it into USYC and earn T-bill yield — then redeem back to USDC when funds are needed.
+
+```
+Deployed on Arc Testnet:
+  USYC Token:  0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C
+  USDC:        0x3600000000000000000000000000000000000000
+```
+
+The agent calls:
+- `usyc_rate` — current exchange rate and APY from Hashnote
+- `usyc_balance` — USYC holdings with USD value estimate
+- `usyc_deposit` — approve USDC + buy USYC (invest into T-bills)
+- `usyc_redeem` — sell USYC back to USDC (withdraw)
+
+All operations are on-chain and auditable. The agent can only operate with its own wallet funds — vault USDC requires a separate admin decision.
+
+```
+Agent detects 50 USDC idle in wallet for 3 days:
+  → usyc_rate() → APY: 4.8%
+  → usyc_deposit(20) → approve + buy → tx confirmed
+  → Telegram: "Invested 20 USDC into USYC (4.8% APY). Remaining liquid: 30 USDC."
+
+Two weeks later, payroll due:
+  → usyc_redeem(20) → sell → USDC returned + yield earned
+  → vault_payroll([...]) → pay team
+```
+
+This is the **earn** side of the autonomous treasury cycle: monitor → earn → spend → report.
+
 ---
 
-## MCP Tools Catalog
+## MCP Tools Catalog (41 tools across 10 modules)
 
 | Tool | Description |
 |------|-------------|
@@ -228,6 +269,12 @@ The agent's payer wallet (`0xA9A4...Ae96e`) holds USDC on Arc Testnet and pays f
 | `execute_gateway_mint` | Execute mint after cross-chain attestation |
 | `x402_fetch` ✨ | HTTP request with automatic x402 USDC payment |
 | `x402_payer_info` ✨ | Agent payer wallet address and USDC balances |
+| `stork_price` 📈 | Fetch latest price from Stork Oracle REST API |
+| `stork_onchain_price` 📈 | Read price from Stork on-chain aggregator contract |
+| `usyc_rate` 📊 | Current USYC exchange rate and APY from Hashnote |
+| `usyc_balance` 📊 | USYC token balance with USD value estimate |
+| `usyc_deposit` 📊 | Invest USDC into USYC (buy tokenized T-bills) |
+| `usyc_redeem` 📊 | Redeem USYC back to USDC |
 | `vault_status` 🔒 | Full OTTOVault state: balance, limits, agent, admin |
 | `vault_transfer` 🔒 | Transfer USDC from vault within on-chain enforced limits |
 | `vault_can_transfer` 🔒 | Preview: would transfer succeed? (no transaction sent) |
@@ -256,11 +303,11 @@ The flagship demo. The agent fetches a price feed that costs money — and pays 
 User → Telegram: "What's the current ETH price?"
 
 Agent:
-  → calls x402_fetch("https://demo-oracle.arc.dev/eth-price")
+  → calls x402_fetch("https://x402-oracle.ottoarc.xyz/eth-price")
   ← HTTP 402: { amount: "0.001", currency: "USDC", chain: "eip155:84532" }
   → signs EIP-3009 transferWithAuthorization (from payer wallet)
   → retries with X-PAYMENT header
-  ← HTTP 200: { price: 2847.42, source: "chainlink", timestamp: ... }
+  ← HTTP 200: { price: 2847.42, source: "stork", timestamp: ... }
   → "ETH price: $2,847.42 ✅  Paid 0.001 USDC (receipt: 0xabc...)"
 ```
 
@@ -297,6 +344,48 @@ Agent:
   → Telegram: "Payroll complete. 30 USDC sent. Remaining: 8 USDC."
 ```
 
+### 4. Stork Oracle — Real-Time Market Data
+
+The agent queries Stork for price data through two channels — fast REST API and trustless on-chain aggregator.
+
+```
+User → Telegram: "What's ETH at right now?"
+
+Agent:
+  → stork_price("ETHUSD") → $2,847.42 (Stork REST, sub-second)
+  → "ETH/USD: $2,847.42 (source: Stork Oracle)"
+
+User → Telegram: "Verify that on-chain"
+
+Agent:
+  → stork_onchain_price("ETHUSD", "arcTestnet")
+  → reads from 0xacC0...0d62 on Arc Testnet
+  → "ETH/USD on-chain: $2,847.38 (Stork Aggregator, Arc Testnet)"
+```
+
+### 5. Yield on Idle USDC
+
+The agent invests idle treasury USDC into Hashnote's tokenized T-bills (USYC) and redeems when funds are needed.
+
+```
+User → Telegram: "Invest idle USDC into yield"
+
+Agent:
+  → usyc_rate() → APY: 4.8%, rate: 1.024 USDC/USYC
+  → get_usdc_balance(agent wallet) → 45 USDC
+  → "Current USYC APY: 4.8%. Invest 20 USDC?" → User: "yes"
+  → usyc_deposit(20) → approve + buy → tx confirmed
+  → Telegram: "Invested 20 USDC into USYC. Remaining liquid: 25 USDC."
+
+(Later)
+User → Telegram: "Redeem USYC, need it for payroll"
+
+Agent:
+  → usyc_balance() → 20.04 USYC (~$20.52 incl. yield)
+  → usyc_redeem(20.04) → sell → USDC returned
+  → Telegram: "Redeemed 20.04 USYC → 20.52 USDC. Yield earned: $0.52"
+```
+
 ---
 
 ## Use Cases
@@ -318,8 +407,14 @@ An AI trading agent needs real-time price data from a premium oracle. Today this
 ### Vendor Payments & Subscriptions
 A web3 company uses several x402-enabled SaaS tools — analytics, risk scoring, compliance checks. Instead of managing API keys and credit cards for each, the CFO configures OTTO with monthly spending limits per vendor. OTTO pays each tool automatically per-use, tracks spend against budget, and alerts when a vendor approaches its limit.
 
+### Yield on Idle Treasury Funds
+A treasury holds 50,000 USDC that won't be needed for two weeks. Today that capital sits idle — earning nothing. With OTTO: the agent detects idle funds, checks current USYC rates (Hashnote tokenized T-bills), invests the idle portion, and redeems automatically when payroll or rebalancing draws near. The treasury earns T-bill yield passively, and the agent handles the full cycle.
+
+> "Invest idle USDC above 10,000 into USYC. Redeem before payroll."
+> OTTO: invested 40,000 USDC at 4.8% APY. Redeemed 2 days before payroll with $92 yield earned.
+
 ### Treasury Reporting on Demand
-The team lead asks for a snapshot of the treasury at any time — mid-meeting, from a phone. OTTO responds in seconds with balances across all chains, recent inflows/outflows, and a summary of x402 payments made. No dashboard login. No spreadsheet. Just a Telegram message.
+The team lead asks for a snapshot of the treasury at any time — mid-meeting, from a phone. OTTO responds in seconds with balances across all chains, USYC yield positions, recent inflows/outflows, and a summary of x402 payments made. No dashboard login. No spreadsheet. Just a Telegram message.
 
 ---
 
@@ -333,7 +428,7 @@ The agent manages USDC across Arc, Base, and Avalanche. To decide **when** and *
 
 | Data | Why the Agent Needs It | Example |
 |------|----------------------|---------|
-| Price feeds (ETH/USD, BTC/USD) | Detect arbitrage opportunities, time rebalances | Agent sees USDC liquidity shifting on Base → queries oracle → confirms the move → rebalances via Gateway |
+| Price feeds (ETH/USD, BTC/USD) | Detect arbitrage opportunities, time rebalances | Agent queries Stork Oracle (REST or on-chain) → confirms price → rebalances via Gateway |
 | Gas oracles | Pick the cheapest moment for cross-chain transfers | Agent checks gas on 3 chains → waits for a dip → executes transfer at lowest cost |
 | Liquidity analytics (TVL, volumes) | Decide which chain needs more USDC | Agent queries DeFi analytics API → chain X TVL is dropping → preemptively moves funds out |
 
@@ -396,21 +491,23 @@ This is the end-state vision: a treasury agent that **earns, spends, and reports
 ```
 1. Vault receives USDC (incoming payment, yield, deposit)
 2. Agent detects the inflow via balance monitoring
-3. Agent queries price + liquidity oracles (pays via x402)
+3. Agent queries Stork Oracle for price data (REST + on-chain verification)
 4. Agent decides: "Arc is underweight, Base is overweight"
 5. Agent runs compliance check on the rebalance path (pays via x402)
 6. Agent executes cross-chain transfer via Gateway
-7. Agent reports the full cycle to Telegram — including x402 costs
+7. Agent invests surplus idle USDC into USYC (T-bill yield)
+8. Agent reports the full cycle to Telegram — including x402 costs and yield positions
 
 Total human involvement: zero.
 Total x402 spend: < $0.01.
+Idle USDC: earning 4-5% APY via USYC.
 ```
 
 ---
 
 ## Why This Matters
 
-**Treasuries don't sleep.** Chains don't pause for timezones. A custodial wallet sitting idle on one chain while another runs dry is a risk and an opportunity cost — but checking and rebalancing manually is not scalable.
+**Treasuries don't sleep.** Chains don't pause for timezones. A custodial wallet sitting idle on one chain while another runs dry is a risk and an opportunity cost — but checking and rebalancing manually is not scalable. Meanwhile, idle USDC earns nothing. OTTO solves both: it rebalances automatically and puts surplus capital to work in yield-bearing USYC.
 
 **AI agents are about to manage real money.** The question is not whether to give agents financial autonomy — it's how to do it safely. OTTO's answer: give the agent a clearly defined role, a set of tools with known capabilities, and smart contract-level limits that no instruction can override.
 
@@ -506,17 +603,19 @@ The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO c
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `arc-wallet-mcp` — full MCP server | ✅ Built | 35 tools across 8 modules |
+| `arc-wallet-mcp` — full MCP server | ✅ Built | 41 tools across 10 modules |
 | `x402_fetch` + `x402_payer_info` tools | ✅ Built | Auto-pay on HTTP 402 |
 | x402 payer wallet (funded) | ✅ Ready | 20 USDC on Arc Testnet |
 | OTTO agent framework | ✅ Built | Claude (Anthropic), Telegram, bash skills |
-| All bash skill scripts | ✅ Built | 7 skills, 35 scripts: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer |
-| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 35 tools wired |
+| All bash skill scripts | ✅ Built | 9 skills: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer, arc-oracle, arc-yield |
+| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 41 tools wired |
 | **OTTOVault smart contract** | ✅ Deployed | All 3 chains · 43 Solidity tests + 101 vitest = 144 total, all passing |
-| **Vault tools** (status, transfer, can_transfer, deposit) | ✅ Built | MCP tools + bash skills |
+| **Vault tools** (status, transfer, can_transfer, deposit, payroll) | ✅ Built | MCP tools + bash skills (15 vault handlers) |
 | **User ownership** (register_address, transfer_admin, encode_admin_tx) | ✅ Built | Tier 3 signing flow via ottoarc.xyz |
 | **Invoice / compliance** (create_invoice, check_invoice_status) | ✅ Built | Off-chain tracking with on-chain balance verification |
-| Demo x402 oracle server | ✅ Built | Express, 3 endpoints (health, eth-price, arc-stats) |
+| **Stork Oracle** (stork_price, stork_onchain_price) | ✅ Built | REST API + on-chain aggregator on Arc Testnet |
+| **USYC Yield** (usyc_rate, usyc_balance, usyc_deposit, usyc_redeem) | ✅ Built | Hashnote tokenized T-bills on Arc Testnet |
+| Demo x402 oracle server | ✅ Built | Express, Stork-powered, Telegram auth, 3 endpoints |
 | Rebalancer skill | ✅ Built | Cross-chain vault monitoring + auto-rebalance via heartbeat |
 | Contract verification | ✅ Verified | Arc Testnet, Base Sepolia, Avalanche Fuji |
 | CI/CD auto-deploy | ✅ Built | GitHub Actions → GCP via SSH + Telegram notifications |
@@ -533,7 +632,11 @@ The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO c
 
 **x402** is the missing protocol layer for agentic commerce. Today, every AI agent that wants to access paid APIs needs a human to approve each payment. x402 eliminates that — the agent signs EIP-3009 authorizations programmatically, with no gas and no human in the loop.
 
-Together, these form a complete stack for autonomous treasury management.
+**Stork Oracle** provides the market data layer. OTTO queries Stork for real-time price feeds — both via REST API (sub-second latency) and on-chain aggregator (trustless, verifiable). This gives the agent the data it needs to make informed rebalancing decisions.
+
+**Hashnote USYC** turns idle USDC into a yield-bearing position. Instead of capital sitting dormant between payroll cycles, OTTO invests it into tokenized US T-bills — earning institutional-grade yield while maintaining on-chain liquidity.
+
+Together, these form a complete stack for autonomous treasury management: custody (Circle DCW), liquidity (Gateway), payments (x402), data (Stork), yield (USYC), and on-chain limits (OTTOVault).
 
 ---
 
@@ -541,15 +644,17 @@ Together, these form a complete stack for autonomous treasury management.
 
 ```
 OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
-├── mcp/                     # MCP server — Circle API + vault tools
+├── mcp/                     # MCP server — 41 tools across 10 modules
 │   └── src/tools/
-│       ├── balance.ts       # get_usdc_balance, get_gateway_balance
+│       ├── balance.ts       # get_usdc_balance, get_gateway_balance, check_wallet_gas
 │       ├── wallet.ts        # create_wallet_set, create_multichain_wallet, ...
 │       ├── transfer.ts      # transfer_usdc_custodial, transfer_usdc_eoa, ...
 │       ├── deposit.ts       # deposit_usdc, withdraw_usdc
 │       ├── gateway.ts       # get_gateway_info, get_supported_chains, ...
 │       ├── x402.ts          # x402_fetch, x402_payer_info ✨
-│       └── vault.ts         # vault/admin/invoice/rebalance/payroll tools (15 handlers) 🔒
+│       ├── vault.ts         # vault/admin/invoice/rebalance/payroll (15 handlers) 🔒
+│       ├── stork.ts         # stork_price, stork_onchain_price 📈
+│       └── usyc.ts          # usyc_rate, usyc_balance, usyc_deposit, usyc_redeem 📊
 │
 ├── agent/                   # OTTO agent (OpenClaw)
 │   ├── agent.md             # Agent identity, rules, tool docs
@@ -563,15 +668,21 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 │       ├── arc-gateway/     # Gateway info scripts
 │       ├── arc-x402/        # x402 payment scripts ✨
 │       ├── arc-vault/       # OTTOVault + admin + invoice + payroll scripts (13) 🔒
-│       └── arc-rebalancer/  # Cross-chain vault monitoring 🔄
+│       ├── arc-rebalancer/  # Cross-chain vault monitoring 🔄
+│       ├── arc-oracle/      # Stork Oracle price feeds (REST + on-chain) 📈
+│       └── arc-yield/       # USYC yield management (deposit + redeem) 📊
 │
 ├── contracts/               # Solidity (Foundry)
-│   ├── src/OTTOVault.sol    # Treasury vault contract
+│   ├── src/OTTOVault.sol    # Treasury vault contract + adminTransfer
 │   ├── test/OTTOVault.t.sol # 43 tests (unit + fuzz), all passing
 │   └── script/Deploy.s.sol  # Multi-chain deployment script
 │
-└── demo-server/             # x402 oracle demo (Express)
-    └── server.ts            # /eth-price, /arc-stats — pay-per-request
+├── demo-server/             # x402 oracle (Express + Stork + Telegram auth)
+│   └── app.ts               # /eth-price, /arc-stats — Stork-powered, pay-per-request
+│
+└── docs/                    # Architecture & security docs
+    ├── security.md          # Security architecture, permission tiers
+    └── testing-flow.md      # End-to-end testing guide
 ```
 
 ---
@@ -580,12 +691,12 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 
 | Track | Fit | Demo |
 |-------|-----|------|
-| **Track 4** — Best Agentic Commerce on Arc | ⭐ Primary | x402 autonomous payment demo |
-| **Track 2** — Best Chain Abstracted USDC | Secondary | Cross-chain rebalancer demo |
-| **Track 3** — Global Payouts and Treasury | Bonus | Payroll execution demo |
+| **Track 4** — Best Agentic Commerce on Arc | ⭐ Primary | x402 autonomous payment + Stork Oracle + USYC yield |
+| **Track 2** — Best Chain Abstracted USDC | Secondary | Cross-chain rebalancer + Gateway transfers |
+| **Track 3** — Global Payouts and Treasury | Bonus | Vault payroll + invoice compliance |
 
 ---
 
 ## One Line
 
-> OTTO is the first AI treasury agent that moves money cross-chain via Circle Gateway, pays for data feeds autonomously via x402, enforces spending limits through a deployed Solidity vault, and reports to your team — all without a single manual transaction.
+> OTTO is the first AI treasury agent that moves money cross-chain via Circle Gateway, pays for data feeds autonomously via x402, queries Stork Oracle for real-time prices, invests idle USDC into yield-bearing USYC, enforces spending limits through a deployed Solidity vault, and reports to your team — all without a single manual transaction.
