@@ -335,22 +335,26 @@ server.tool(
 
 // ─── OTTOVault Tools ───────────────────────────────────────────────────────────
 
+const VAULT_CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional();
+
 server.tool(
   "vault_status",
   [
-    "Get the full status of the OTTOVault treasury contract on Arc Testnet.",
-    "Returns: USDC balance, per-tx cap, daily limit, amount spent today, remaining allowance,",
+    "Get the full status of an OTTOVault treasury contract.",
+    "Returns: USDC balance, per-tx cap, daily limit, spent today, remaining allowance,",
     "whitelist state, pause state, agent address, admin address.",
+    "Supports all chains: arcTestnet (default), baseSepolia, avalancheFuji.",
     "Use this before vault_transfer to verify limits and check vault balance.",
   ].join(" "),
   {
+    chain: VAULT_CHAIN_ENUM.describe("Chain: arcTestnet (default) | baseSepolia | avalancheFuji"),
     vault_address: z.string().optional()
-      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+      .describe("OTTOVault contract address (overrides per-chain default from env)"),
   },
-  async ({ vault_address }) => ({
+  async ({ chain, vault_address }) => ({
     content: [{
       type: "text" as const,
-      text: await handleVaultStatus({ vault_address }),
+      text: await handleVaultStatus({ chain, vault_address }),
     }],
   })
 );
@@ -358,22 +362,23 @@ server.tool(
 server.tool(
   "vault_transfer",
   [
-    "Transfer USDC from the OTTOVault treasury to a recipient.",
-    "The vault enforces per-tx and daily spending limits at the EVM level — these cannot be bypassed.",
+    "Transfer USDC from an OTTOVault treasury to a recipient.",
+    "The vault enforces per-tx and daily spending limits at the EVM level — cannot be bypassed.",
     "The agent's X402_PAYER_PRIVATE_KEY must match the vault's registered agent address.",
-    "Always call vault_status first to check available balance and limits.",
-    "Requires confirmation before calling for amounts > 1 USDC.",
+    "Supports all chains: arcTestnet (default), baseSepolia, avalancheFuji.",
+    "Always call vault_status first. Requires user confirmation for amounts > 1 USDC.",
   ].join(" "),
   {
     to: z.string().describe("Recipient EVM address (0x-prefixed)"),
     amount_usdc: z.number().positive().describe("Amount in USDC to transfer (e.g. 5.0)"),
+    chain: VAULT_CHAIN_ENUM.describe("Chain: arcTestnet (default) | baseSepolia | avalancheFuji"),
     vault_address: z.string().optional()
-      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+      .describe("OTTOVault contract address (overrides per-chain default from env)"),
   },
-  async ({ to, amount_usdc, vault_address }) => ({
+  async ({ to, amount_usdc, chain, vault_address }) => ({
     content: [{
       type: "text" as const,
-      text: await handleVaultTransfer({ to, amount_usdc, vault_address }),
+      text: await handleVaultTransfer({ to, amount_usdc, chain, vault_address }),
     }],
   })
 );
@@ -384,18 +389,20 @@ server.tool(
     "Preview whether a vault transfer would succeed WITHOUT sending a transaction.",
     "Returns ok=true if the transfer would go through, or ok=false with a human-readable reason.",
     "Checks: pause state, per-tx limit, daily limit, whitelist, vault balance.",
+    "Supports all chains: arcTestnet (default), baseSepolia, avalancheFuji.",
     "Use this before vault_transfer to avoid failed transactions.",
   ].join(" "),
   {
     to: z.string().describe("Recipient EVM address (0x-prefixed)"),
     amount_usdc: z.number().positive().describe("Amount in USDC to preview"),
+    chain: VAULT_CHAIN_ENUM.describe("Chain: arcTestnet (default) | baseSepolia | avalancheFuji"),
     vault_address: z.string().optional()
-      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+      .describe("OTTOVault contract address (overrides per-chain default from env)"),
   },
-  async ({ to, amount_usdc, vault_address }) => ({
+  async ({ to, amount_usdc, chain, vault_address }) => ({
     content: [{
       type: "text" as const,
-      text: await handleVaultCanTransfer({ to, amount_usdc, vault_address }),
+      text: await handleVaultCanTransfer({ to, amount_usdc, chain, vault_address }),
     }],
   })
 );

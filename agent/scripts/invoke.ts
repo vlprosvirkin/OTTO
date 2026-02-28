@@ -119,15 +119,15 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
   // ── OTTOVault (no Supabase) ───────────────────────────────────────────
   vault_status: async (a) => {
     const { handleVaultStatus } = await import(`${MCP}/vault.js`);
-    return handleVaultStatus(a as { vault_address?: string });
+    return handleVaultStatus(a as { chain?: string; vault_address?: string });
   },
   vault_transfer: async (a) => {
     const { handleVaultTransfer } = await import(`${MCP}/vault.js`);
-    return handleVaultTransfer(a as { to: string; amount_usdc: number; vault_address?: string });
+    return handleVaultTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string });
   },
   vault_can_transfer: async (a) => {
     const { handleVaultCanTransfer } = await import(`${MCP}/vault.js`);
-    return handleVaultCanTransfer(a as { to: string; amount_usdc: number; vault_address?: string });
+    return handleVaultCanTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string });
   },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────

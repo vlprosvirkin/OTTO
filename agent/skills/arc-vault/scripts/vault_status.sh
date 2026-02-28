@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
+# Usage: vault_status.sh [chain] [vault_address]
+#   chain: arcTestnet (default) | baseSepolia | avalancheFuji
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
 TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../arc-wallet-mcp/node_modules/.bin/tsx")"
 
-VAULT_ADDRESS="${1:-${VAULT_ADDRESS:-}}"
-if [[ -n "$VAULT_ADDRESS" ]]; then
-  ARGS="{\"vault_address\":\"$VAULT_ADDRESS\"}"
+CHAIN="${1:-arcTestnet}"
+VAULT_ADDR="${2:-}"
+
+if [[ -n "$VAULT_ADDR" ]]; then
+  ARGS="{\"chain\":\"$CHAIN\",\"vault_address\":\"$VAULT_ADDR\"}"
 else
-  ARGS="{}"
+  ARGS="{\"chain\":\"$CHAIN\"}"
 fi
 
 $TSX "$ROOT/scripts/invoke.ts" vault_status "$ARGS"

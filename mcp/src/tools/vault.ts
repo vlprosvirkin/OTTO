@@ -1,14 +1,16 @@
 /**
- * OTTOVault MCP Tools
+ * OTTOVault MCP Tools — Multi-chain
  *
- * Interact with the on-chain OTTOVault treasury contract.
- * The vault enforces per-tx and daily spending limits at the EVM level —
- * limits that no prompt injection or AI compromise can override.
+ * Interact with OTTOVault treasury contracts on any supported chain.
+ * Spending limits are enforced at the EVM level on each chain independently.
  *
- * Requires environment variables:
- *   X402_PAYER_PRIVATE_KEY  — Agent private key (same wallet used for x402)
- *   VAULT_ADDRESS           — OTTOVault contract address
- *                             (default: Arc Testnet deployment)
+ * Supported chains: arcTestnet | baseSepolia | avalancheFuji
+ *
+ * Environment variables:
+ *   X402_PAYER_PRIVATE_KEY   — Agent private key (same wallet used for x402)
+ *   VAULT_ADDRESS_ARC        — OTTOVault on Arc Testnet (default: deployed)
+ *   VAULT_ADDRESS_BASE       — OTTOVault on Base Sepolia (set after deployment)
+ *   VAULT_ADDRESS_FUJI       — OTTOVault on Avalanche Fuji (set after deployment)
  */
 
 import {
@@ -16,14 +18,42 @@ import {
   createWalletClient,
   http,
   type Address,
+  type Chain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { baseSepolia, avalancheFuji } from "viem/chains";
 import { arcTestnet } from "../lib/circle/gateway-sdk.js";
 
-// ─── Contract ─────────────────────────────────────────────────────────────────
+// ─── Chain registry ───────────────────────────────────────────────────────────
 
-const DEFAULT_VAULT_ADDRESS =
-  "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA" as const;
+type SupportedChain = "arcTestnet" | "baseSepolia" | "avalancheFuji";
+
+const CHAINS: Record<SupportedChain, Chain> = {
+  arcTestnet,
+  baseSepolia,
+  avalancheFuji,
+};
+
+const CHAIN_NAMES: Record<SupportedChain, string> = {
+  arcTestnet:    "Arc Testnet (5042002)",
+  baseSepolia:   "Base Sepolia (84532)",
+  avalancheFuji: "Avalanche Fuji (43113)",
+};
+
+const EXPLORER_TX: Record<SupportedChain, string> = {
+  arcTestnet:    "https://explorer.testnet.arc.network/tx",
+  baseSepolia:   "https://sepolia.basescan.org/tx",
+  avalancheFuji: "https://testnet.snowtrace.io/tx",
+};
+
+// Default vault addresses per chain (set after deployment)
+const DEFAULT_VAULT_ADDRESSES: Record<SupportedChain, string | undefined> = {
+  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA",
+  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? undefined,
+  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? undefined,
+};
+
+// ─── Contract ABI ─────────────────────────────────────────────────────────────
 
 const VAULT_ABI = [
   {
@@ -66,49 +96,46 @@ const VAULT_ABI = [
       { name: "reason", type: "string" },
     ],
   },
-  {
-    name: "vaultBalance",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "remainingDailyAllowance",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
 ] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getVaultAddress(): Address {
-  return (
-    process.env.VAULT_ADDRESS ?? DEFAULT_VAULT_ADDRESS
-  ) as Address;
+function resolveChain(chain?: string): SupportedChain {
+  if (!chain) return "arcTestnet";
+  if (chain === "arcTestnet" || chain === "baseSepolia" || chain === "avalancheFuji") {
+    return chain;
+  }
+  throw new Error(
+    `Unsupported chain: "${chain}". Use: arcTestnet | baseSepolia | avalancheFuji`
+  );
 }
 
-function getPublicClient() {
-  return createPublicClient({ chain: arcTestnet, transport: http() });
+function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string): Address {
+  const addr = vaultAddress ?? DEFAULT_VAULT_ADDRESSES[chain];
+  if (!addr) {
+    throw new Error(
+      `No vault address for ${chain}. ` +
+      `Set VAULT_ADDRESS_${chain === "baseSepolia" ? "BASE" : chain === "avalancheFuji" ? "FUJI" : "ARC"} ` +
+      `or pass vault_address explicitly.`
+    );
+  }
+  return addr as Address;
 }
 
-function getAgentWalletClient() {
+function getPublicClient(chain: SupportedChain) {
+  return createPublicClient({ chain: CHAINS[chain], transport: http() });
+}
+
+function getAgentWalletClient(chain: SupportedChain) {
   const pk = process.env.X402_PAYER_PRIVATE_KEY;
   if (!pk) {
     throw new Error(
-      "X402_PAYER_PRIVATE_KEY is not set. " +
-        "Set it to the agent's EVM private key (0x-prefixed)."
+      "X402_PAYER_PRIVATE_KEY is not set. Set it to the agent's EVM private key (0x-prefixed)."
     );
   }
   const account = privateKeyToAccount(pk as `0x${string}`);
   return {
-    client: createWalletClient({
-      account,
-      chain: arcTestnet,
-      transport: http(),
-    }),
+    client: createWalletClient({ account, chain: CHAINS[chain], transport: http() }),
     account,
   };
 }
@@ -120,18 +147,17 @@ function formatUsdc(atomic: bigint): string {
 // ─── Tool Handlers ─────────────────────────────────────────────────────────────
 
 export interface VaultStatusParams {
+  chain?: string;
   vault_address?: string;
 }
 
 /**
- * Read the full status of the OTTOVault in one call.
- * Returns balance, limits, daily spend, whitelist state, pause state.
+ * Read the full status of an OTTOVault on the specified chain.
  */
-export async function handleVaultStatus(
-  params: VaultStatusParams
-): Promise<string> {
-  const vaultAddr = (params.vault_address ?? getVaultAddress()) as Address;
-  const client = getPublicClient();
+export async function handleVaultStatus(params: VaultStatusParams): Promise<string> {
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
+  const client = getPublicClient(chain);
 
   const result = (await client.readContract({
     address: vaultAddr,
@@ -139,24 +165,15 @@ export async function handleVaultStatus(
     functionName: "status",
   })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
 
-  const [
-    balance,
-    maxPerTx,
-    dailyLimit,
-    dailySpent,
-    remainingToday,
-    whitelistEnabled,
-    paused,
-    agent,
-    admin,
-  ] = result;
+  const [balance, maxPerTx, dailyLimit, dailySpent, remainingToday,
+         whitelistEnabled, paused, agent, admin] = result;
 
-  const lines = [
+  return [
     `## OTTOVault Status`,
     `**Contract**: ${vaultAddr}`,
-    `**Chain**: Arc Testnet (chainId 5042002)`,
+    `**Chain**: ${CHAIN_NAMES[chain]}`,
     ``,
-    `### Balances`,
+    `### Balance`,
     `**Vault Balance**: ${formatUsdc(balance)} USDC`,
     ``,
     `### Spending Limits`,
@@ -169,10 +186,8 @@ export async function handleVaultStatus(
     `**Agent**: ${agent}`,
     `**Admin**: ${admin}`,
     `**Whitelist**: ${whitelistEnabled ? "Enabled" : "Disabled"}`,
-    `**Paused**: ${paused ? "YES — transfers are blocked" : "No"}`,
-  ];
-
-  return lines.join("\n");
+    `**Paused**: ${paused ? "YES — transfers blocked" : "No"}`,
+  ].join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,32 +195,27 @@ export async function handleVaultStatus(
 export interface VaultTransferParams {
   to: string;
   amount_usdc: number;
+  chain?: string;
   vault_address?: string;
 }
 
 /**
- * Transfer USDC from the OTTOVault to a recipient.
- * The agent's private key (X402_PAYER_PRIVATE_KEY) must match the vault's agent address.
- * The vault enforces per-tx and daily limits on-chain — no overrides possible.
+ * Transfer USDC from an OTTOVault to a recipient.
+ * Enforces per-tx and daily limits on-chain — no overrides possible.
  */
-export async function handleVaultTransfer(
-  params: VaultTransferParams
-): Promise<string> {
+export async function handleVaultTransfer(params: VaultTransferParams): Promise<string> {
   const { to, amount_usdc } = params;
-  const vaultAddr = (params.vault_address ?? getVaultAddress()) as Address;
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
 
-  if (!to || !to.startsWith("0x")) {
-    throw new Error("Invalid recipient address — must be 0x-prefixed");
-  }
-  if (!amount_usdc || amount_usdc <= 0) {
-    throw new Error("Invalid amount — must be positive USDC");
-  }
+  if (!to?.startsWith("0x")) throw new Error("Invalid recipient — must be 0x-prefixed");
+  if (!amount_usdc || amount_usdc <= 0) throw new Error("Amount must be positive");
 
   const amountAtomic = BigInt(Math.round(amount_usdc * 1_000_000));
   const toAddr = to as Address;
+  const publicClient = getPublicClient(chain);
 
   // Pre-flight check
-  const publicClient = getPublicClient();
   const [ok, reason] = (await publicClient.readContract({
     address: vaultAddr,
     abi: VAULT_ABI,
@@ -214,18 +224,11 @@ export async function handleVaultTransfer(
   })) as [boolean, string];
 
   if (!ok) {
-    return JSON.stringify({
-      success: false,
-      reason,
-      to,
-      amount_usdc,
-      vault: vaultAddr,
-    });
+    return JSON.stringify({ success: false, reason, to, amount_usdc, chain, vault: vaultAddr });
   }
 
-  // Execute transfer
-  const { client, account } = getAgentWalletClient();
-
+  // Execute
+  const { client, account } = getAgentWalletClient(chain);
   const txHash = await client.writeContract({
     address: vaultAddr,
     abi: VAULT_ABI,
@@ -234,25 +237,18 @@ export async function handleVaultTransfer(
     account,
   });
 
-  // Wait for receipt
-  const receipt = await publicClient.waitForTransactionReceipt({
-    hash: txHash,
-    timeout: 30_000,
-  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
 
-  return JSON.stringify(
-    {
-      success: receipt.status === "success",
-      txHash,
-      blockNumber: receipt.blockNumber.toString(),
-      to,
-      amount_usdc,
-      vault: vaultAddr,
-      explorerUrl: `https://explorer.testnet.arc.network/tx/${txHash}`,
-    },
-    null,
-    2
-  );
+  return JSON.stringify({
+    success: receipt.status === "success",
+    txHash,
+    blockNumber: receipt.blockNumber.toString(),
+    to,
+    amount_usdc,
+    chain,
+    vault: vaultAddr,
+    explorerUrl: `${EXPLORER_TX[chain]}/${txHash}`,
+  }, null, 2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,21 +256,20 @@ export async function handleVaultTransfer(
 export interface VaultCanTransferParams {
   to: string;
   amount_usdc: number;
+  chain?: string;
   vault_address?: string;
 }
 
 /**
- * Preview whether a vault transfer would succeed without sending a transaction.
+ * Preview whether a vault transfer would succeed — no transaction sent.
  */
-export async function handleVaultCanTransfer(
-  params: VaultCanTransferParams
-): Promise<string> {
+export async function handleVaultCanTransfer(params: VaultCanTransferParams): Promise<string> {
   const { to, amount_usdc } = params;
-  const vaultAddr = (params.vault_address ?? getVaultAddress()) as Address;
-
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
   const amountAtomic = BigInt(Math.round(amount_usdc * 1_000_000));
 
-  const client = getPublicClient();
+  const client = getPublicClient(chain);
   const [ok, reason] = (await client.readContract({
     address: vaultAddr,
     abi: VAULT_ABI,
@@ -287,6 +282,7 @@ export async function handleVaultCanTransfer(
     reason: ok ? "Transfer would succeed" : reason,
     to,
     amount_usdc,
+    chain,
     vault: vaultAddr,
   });
 }
