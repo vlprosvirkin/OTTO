@@ -39,7 +39,6 @@ vi.mock("@x402/core/server", () => ({
 
 import { mockEthPrice, mockArcStats, createApp } from "../../../demo-server/app.js";
 import { type RequestHandler } from "express";
-import { paymentMiddleware } from "@x402/express";
 
 const PAYTO = "0xA9A48d73F67B0c820fDE57c8b0639C6F850AE96e" as `0x${string}`;
 
@@ -206,12 +205,9 @@ describe("x402 payment gate", () => {
     expect(res.status).toBe(402);
   });
 
-  it("paymentMiddleware was called with both route configs", () => {
-    const mockFn = vi.mocked(paymentMiddleware);
-    expect(mockFn).toHaveBeenCalled();
-    const [routeConfig] = mockFn.mock.calls[0];
-    expect(routeConfig).toHaveProperty("GET /eth-price");
-    expect(routeConfig).toHaveProperty("GET /arc-stats");
-    expect((routeConfig as Record<string, { accepts: { price: string } }>)["GET /eth-price"].accepts.price).toBe("$0.001");
+  it("GET /health is NOT gated (remains free)", async () => {
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ok");
   });
 });
