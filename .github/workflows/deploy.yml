@@ -1,0 +1,64 @@
+name: Deploy OTTO Agent
+
+on:
+  # Auto-deploy on every push to main
+  push:
+    branches: [main]
+
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual deploy"
+        required: false
+        default: "manual"
+
+# Only one deploy at a time
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to local runner
+    runs-on: self-hosted
+
+    # ── Access control ──────────────────────────────────────────────────────
+    # Only the repo owner can trigger this pipeline.
+    # Any other actor (forks, PRs from strangers) is rejected at job level.
+    if: github.actor == 'vlprosvirkin'
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install MCP dependencies
+        working-directory: mcp
+        run: npm ci --prefer-offline || npm install
+
+      - name: Install agent dependencies
+        working-directory: agent
+        run: npm ci --prefer-offline || npm install
+
+      - name: Run deploy script
+        run: bash scripts/deploy.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Notify Telegram on success
+        if: success()
+        run: |
+          MSG="✅ OTTO deployed%0Acommit: ${{ github.sha }}%0Atriggered by: ${{ github.actor }}"
+          curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}" \
+            -d "text=$MSG" > /dev/null
+
+      - name: Notify Telegram on failure
+        if: failure()
+        run: |
+          MSG="❌ OTTO deploy FAILED%0Acommit: ${{ github.sha }}"
+          curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}" \
+            -d "text=$MSG" > /dev/null

@@ -52,6 +52,8 @@ import {
   handleVaultStatus,
   handleVaultTransfer,
   handleVaultCanTransfer,
+  handleVaultDeposit,
+  handleRebalanceCheck,
 } from "./tools/vault.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
@@ -403,6 +405,52 @@ server.tool(
     content: [{
       type: "text" as const,
       text: await handleVaultCanTransfer({ to, amount_usdc, chain, vault_address }),
+    }],
+  })
+);
+
+server.registerTool(
+  "vault_deposit",
+  {
+    title: "Deposit USDC into OTTOVault",
+    description:
+      "Deposit USDC from the agent's own wallet into an OTTOVault on any chain. " +
+      "Runs approve() then deposit() in sequence. Agent must hold USDC on the target chain. " +
+      "Use this to top up a vault that has run low.",
+    inputSchema: {
+      amount_usdc: z.number().positive().describe("Amount of USDC to deposit (e.g. 10 = 10 USDC)"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Target chain (default: arcTestnet)"),
+      vault_address: z.string().optional()
+        .describe("OTTOVault contract address (overrides per-chain default)"),
+    },
+  },
+  async ({ amount_usdc, chain, vault_address }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleVaultDeposit({ amount_usdc, chain, vault_address }),
+    }],
+  })
+);
+
+server.registerTool(
+  "rebalance_check",
+  {
+    title: "Check vault balances and rebalancing needs",
+    description:
+      "Checks OTTOVault balances on all 3 chains (arcTestnet, baseSepolia, avalancheFuji) " +
+      "and returns a JSON report: which vaults are healthy, low, or empty, " +
+      "total shortfall, and recommended actions. " +
+      "Use this as the first step in the rebalancing playbook before calling vault_deposit or transfer.",
+    inputSchema: {
+      min_usdc: z.number().positive().optional()
+        .describe("Minimum acceptable vault balance per chain in USDC (default: 5)"),
+    },
+  },
+  async ({ min_usdc }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleRebalanceCheck({ min_usdc }),
     }],
   })
 );

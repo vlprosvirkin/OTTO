@@ -70,6 +70,13 @@ const VAULT_ABI = [
     outputs: [],
   },
   {
+    name: "deposit",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+  {
     name: "status",
     type: "function",
     stateMutability: "view",
@@ -280,4 +287,162 @@ export async function handleVaultCanTransfer(params: VaultCanTransferParams): Pr
     chain,
     vault: vaultAddr,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ERC20_ABI = [
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const USDC_ADDRESS: Record<SupportedChain, Address> = {
+  arcTestnet:    "0x3600000000000000000000000000000000000000",
+  baseSepolia:   "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  avalancheFuji: "0x5425890298aed601595a70ab815c96711a31bc65",
+};
+
+export interface VaultDepositParams {
+  amount_usdc: number;
+  chain?: string;
+  vault_address?: string;
+}
+
+/**
+ * Deposit USDC from the agent wallet into an OTTOVault.
+ * Requires: agent wallet has sufficient USDC on the target chain.
+ * Steps: approve(vault, amount) → deposit(amount)
+ */
+export async function handleVaultDeposit(params: VaultDepositParams): Promise<string> {
+  const { amount_usdc } = params;
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
+
+  if (!amount_usdc || amount_usdc <= 0) throw new Error("Amount must be positive");
+
+  const amountAtomic = BigInt(Math.round(amount_usdc * 1_000_000));
+  const { client, account } = getAgentWalletClient(chain);
+  const publicClient = getPublicClient(chain);
+  const usdcAddr = USDC_ADDRESS[chain];
+
+  // Check agent balance first
+  const balance = (await publicClient.readContract({
+    address: usdcAddr,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [account.address],
+  })) as bigint;
+
+  if (balance < amountAtomic) {
+    return JSON.stringify({
+      success: false,
+      reason: `Insufficient agent USDC balance: ${formatUsdc(balance)} USDC (need ${formatUsdc(amountAtomic)})`,
+      chain,
+      vault: vaultAddr,
+    });
+  }
+
+  // Step 1: approve vault to pull USDC
+  const approveTx = await client.writeContract({
+    address: usdcAddr,
+    abi: ERC20_ABI,
+    functionName: "approve",
+    args: [vaultAddr, amountAtomic],
+    account,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: approveTx, timeout: 30_000 });
+
+  // Step 2: deposit into vault
+  const depositTx = await client.writeContract({
+    address: vaultAddr,
+    abi: VAULT_ABI,
+    functionName: "deposit",
+    args: [amountAtomic],
+    account,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: depositTx, timeout: 30_000 });
+
+  return JSON.stringify({
+    success: receipt.status === "success",
+    depositTxHash: depositTx,
+    approveTxHash: approveTx,
+    amount_usdc,
+    chain,
+    vault: vaultAddr,
+    explorerUrl: `${EXPLORER_TX[chain]}/${depositTx}`,
+  }, null, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RebalanceCheckParams {
+  min_usdc?: number;
+}
+
+/**
+ * Check vault balances on all 3 chains and recommend rebalancing actions.
+ * Returns a JSON report: which chains are healthy, low, or critical.
+ */
+export async function handleRebalanceCheck(params: RebalanceCheckParams): Promise<string> {
+  const min = params.min_usdc ?? 5;
+  const chains: SupportedChain[] = ["arcTestnet", "baseSepolia", "avalancheFuji"];
+
+  const results = await Promise.all(chains.map(async (chain) => {
+    const vaultAddr = resolveVaultAddress(chain);
+    const client = getPublicClient(chain);
+
+    const raw = (await client.readContract({
+      address: vaultAddr,
+      abi: VAULT_ABI,
+      functionName: "status",
+    })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+
+    const [balance, maxPerTx, dailyLimit, , remainingToday, , paused] = raw;
+    const balanceUsdc = Number(balance) / 1_000_000;
+    const status = paused ? "paused" : balanceUsdc < min ? (balanceUsdc === 0 ? "empty" : "low") : "healthy";
+
+    return {
+      chain,
+      chainName: CHAIN_NAMES[chain],
+      vault: vaultAddr,
+      balance_usdc: balanceUsdc,
+      max_per_tx_usdc: Number(maxPerTx) / 1_000_000,
+      daily_limit_usdc: Number(dailyLimit) / 1_000_000,
+      remaining_today_usdc: Number(remainingToday) / 1_000_000,
+      status,
+      needs_funding: balanceUsdc < min,
+      shortfall_usdc: balanceUsdc < min ? min - balanceUsdc : 0,
+    };
+  }));
+
+  const needFunding = results.filter((r) => r.needs_funding);
+  const healthy = results.filter((r) => !r.needs_funding);
+
+  return JSON.stringify({
+    threshold_usdc: min,
+    chains: results,
+    summary: {
+      healthy: healthy.map((r) => r.chain),
+      needs_funding: needFunding.map((r) => r.chain),
+      total_shortfall_usdc: needFunding.reduce((s, r) => s + r.shortfall_usdc, 0),
+      recommendation: needFunding.length === 0
+        ? "All vaults healthy — no rebalancing needed."
+        : `Fund ${needFunding.map((r) => r.chain).join(", ")} with at least ${needFunding.map((r) => `${r.shortfall_usdc.toFixed(2)} USDC on ${r.chain}`).join("; ")}.`,
+    },
+  }, null, 2);
 }

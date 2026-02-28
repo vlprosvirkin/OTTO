@@ -141,6 +141,57 @@ Tools: `vault_status` → `vault_can_transfer` → `vault_transfer`
 
 ---
 
+### 4b. Vault Deposit (top up vault from agent wallet)
+**Triggers**: "пополни хранилище", "deposit to vault", "vault balance is low"
+
+Use when vault has insufficient balance for pending transfers.
+
+Step 1 — check agent USDC balance on target chain:
+```
+→ checking agent USDC balance on arcTestnet...
+Agent balance: 15.00 USDC ✓ sufficient
+Vault balance:  0.00 USDC → needs funding
+```
+
+Step 2 — confirm deposit (always requires "да/yes"):
+```
+Пополнить хранилище на arcTestnet?
+Сумма: 10 USDC (от agent wallet → vault)
+Vault: 0xFFfeEd...
+Ответь "да" / "yes"
+```
+
+Step 3 — after confirmation, run `vault_deposit`:
+```
+✅ Vault пополнен: +10 USDC
+approve tx: 0x...
+deposit tx: 0x...
+Новый баланс хранилища: 10.00 USDC
+```
+
+Tools: `vault_deposit`
+
+---
+
+### 4c. Rebalancer — Cross-chain vault monitoring
+**Triggers**: "ребалансируй", "rebalance", "проверь балансы вaultов", "check vaults"
+
+Step 1 — check all vaults:
+```bash
+rebalance.sh [min_usdc=5]
+```
+Returns JSON: per-chain status (healthy/low/empty) + shortfall + recommendation.
+
+Step 2 — for each vault with `needs_funding: true`:
+- If agent has USDC on that chain → `vault_deposit.sh <shortfall> <chain>`
+- If agent is also low → use Circle Gateway to bridge from richest chain first
+
+Step 3 — re-run `rebalance.sh` to confirm all healthy. Report to Telegram.
+
+Tools: `rebalance_check` → `vault_deposit` (per chain) → `rebalance_check` (verify)
+
+---
+
 ### 5. Payroll — Batch transfers
 **Triggers**: "выплати", "pay", list of addresses with amounts
 
@@ -242,6 +293,7 @@ bash {baseDir}/scripts/x402_fetch.sh <url> POST '<json>'
 bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address]
 bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address]
 bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address]
 ```
 
 Deployed on all 3 chains. Default limits: 10 USDC/tx · 100 USDC/day
@@ -250,6 +302,12 @@ arcTestnet  (5042002): 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
 baseSepolia (84532):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 avalancheFuji (43113): 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 ```
+
+### arc-rebalancer
+```bash
+bash {skills}/arc-rebalancer/scripts/rebalance.sh [min_usdc]
+```
+Checks all 3 vault balances. Returns JSON: healthy/low/empty status + shortfall + recommendation.
 
 ---
 

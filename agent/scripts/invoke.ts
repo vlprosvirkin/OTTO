@@ -130,6 +130,14 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleVaultCanTransfer } = await import(`${MCP}/vault.js`);
     return handleVaultCanTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string });
   },
+  vault_deposit: async (a) => {
+    const { handleVaultDeposit } = await import(`${MCP}/vault.js`);
+    return handleVaultDeposit(a as { amount_usdc: number; chain?: string; vault_address?: string });
+  },
+  rebalance_check: async (a) => {
+    const { handleRebalanceCheck } = await import(`${MCP}/vault.js`);
+    return handleRebalanceCheck(a as { min_usdc?: number });
+  },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────
   x402_fetch: async (a) => {

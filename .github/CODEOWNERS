@@ -1,0 +1,3 @@
+# OTTO repo — all changes require review by the owner.
+# This prevents unauthorized PRs from merging and triggering the deploy pipeline.
+* @vlprosvirkin
