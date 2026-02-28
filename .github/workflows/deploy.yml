@@ -61,7 +61,8 @@ jobs:
 
             echo "→ ensure openclaw config"
             npx --prefix "$OTTO/agent" openclaw config set gateway.mode local 2>/dev/null || true
-            npx --prefix "$OTTO/agent" openclaw config set gateway.auth.mode none 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set gateway.auth.mode token 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set gateway.auth.token otto-demo-gw-2026 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.allowedOrigins '["https://ottoarc.xyz"]' 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.allowInsecureAuth true 2>/dev/null || true
