@@ -5,7 +5,10 @@ libs = ["lib"]
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 ]
-solc_version = "0.8.20"
+solc_version = "0.8.24"
+via_ir = true
+optimizer = true
+optimizer_runs = 200
 
 [rpc_endpoints]
 arc_testnet = "https://rpc.testnet.arc.network/${ARC_TESTNET_RPC_KEY}"
