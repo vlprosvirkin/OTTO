@@ -56,7 +56,9 @@ jobs:
             echo "→ restart openclaw"
             pkill -f "openclaw" 2>/dev/null && sleep 2 || true
 
+            set -a
             source "$OTTO/agent/.env"
+            set +a
             export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$CLAUDE_API_KEY}"
 
             echo "→ ensure openclaw config"
