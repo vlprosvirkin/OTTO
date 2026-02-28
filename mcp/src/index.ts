@@ -48,6 +48,11 @@ import {
   handleX402Fetch,
   handleX402PayerInfo,
 } from "./tools/x402.js";
+import {
+  handleVaultStatus,
+  handleVaultTransfer,
+  handleVaultCanTransfer,
+} from "./tools/vault.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
 
@@ -324,6 +329,73 @@ server.tool(
     content: [{
       type: "text" as const,
       text: await handleX402PayerInfo({}),
+    }],
+  })
+);
+
+// ─── OTTOVault Tools ───────────────────────────────────────────────────────────
+
+server.tool(
+  "vault_status",
+  [
+    "Get the full status of the OTTOVault treasury contract on Arc Testnet.",
+    "Returns: USDC balance, per-tx cap, daily limit, amount spent today, remaining allowance,",
+    "whitelist state, pause state, agent address, admin address.",
+    "Use this before vault_transfer to verify limits and check vault balance.",
+  ].join(" "),
+  {
+    vault_address: z.string().optional()
+      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+  },
+  async ({ vault_address }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleVaultStatus({ vault_address }),
+    }],
+  })
+);
+
+server.tool(
+  "vault_transfer",
+  [
+    "Transfer USDC from the OTTOVault treasury to a recipient.",
+    "The vault enforces per-tx and daily spending limits at the EVM level — these cannot be bypassed.",
+    "The agent's X402_PAYER_PRIVATE_KEY must match the vault's registered agent address.",
+    "Always call vault_status first to check available balance and limits.",
+    "Requires confirmation before calling for amounts > 1 USDC.",
+  ].join(" "),
+  {
+    to: z.string().describe("Recipient EVM address (0x-prefixed)"),
+    amount_usdc: z.number().positive().describe("Amount in USDC to transfer (e.g. 5.0)"),
+    vault_address: z.string().optional()
+      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+  },
+  async ({ to, amount_usdc, vault_address }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleVaultTransfer({ to, amount_usdc, vault_address }),
+    }],
+  })
+);
+
+server.tool(
+  "vault_can_transfer",
+  [
+    "Preview whether a vault transfer would succeed WITHOUT sending a transaction.",
+    "Returns ok=true if the transfer would go through, or ok=false with a human-readable reason.",
+    "Checks: pause state, per-tx limit, daily limit, whitelist, vault balance.",
+    "Use this before vault_transfer to avoid failed transactions.",
+  ].join(" "),
+  {
+    to: z.string().describe("Recipient EVM address (0x-prefixed)"),
+    amount_usdc: z.number().positive().describe("Amount in USDC to preview"),
+    vault_address: z.string().optional()
+      .describe("OTTOVault contract address (default: deployed on Arc Testnet)"),
+  },
+  async ({ to, amount_usdc, vault_address }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleVaultCanTransfer({ to, amount_usdc, vault_address }),
     }],
   })
 );

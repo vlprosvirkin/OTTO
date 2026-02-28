@@ -60,7 +60,7 @@ Done. Zero manual steps. Zero gas fees.
 │                                                                  │
 │  Skill Scripts (bash):                                           │
 │  arc-balance  ·  arc-wallet  ·  arc-transfer                     │
-│  arc-gateway  ·  arc-x402                                        │
+│  arc-gateway  ·  arc-x402  ·  arc-vault 🔒                       │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ tsx invoke.ts <tool> <args>
 ┌───────────────────────────────▼──────────────────────────────────┐
@@ -68,22 +68,22 @@ Done. Zero manual steps. Zero gas fees.
 │              MCP Server (Model Context Protocol)                 │
 │                                                                  │
 │  ┌──────────────┬──────────────┬─────────────┬────────────────┐  │
-│  │   balance    │   wallet     │  transfer   │     x402       │  │
+│  │   balance    │   wallet     │  transfer   │  vault 🔒      │  │
 │  │              │              │             │                │  │
-│  │ get_usdc_    │ create_      │ transfer_   │ x402_fetch ✨   │  │
+│  │ get_usdc_    │ create_      │ transfer_   │ vault_status   │  │
 │  │ balance      │ wallet_set   │ usdc_       │                │  │
-│  │              │              │ custodial   │ x402_payer_    │  │
-│  │ get_gateway_ │ create_      │             │ info ✨         │  │
-│  │ balance      │ multichain_  │ transfer_   │                │  │
-│  │              │ wallet       │ usdc_eoa    │                │  │
+│  │              │              │ custodial   │ vault_transfer │  │
+│  │ get_gateway_ │ create_      │             │                │  │
+│  │ balance      │ multichain_  │ transfer_   │ vault_can_     │  │
+│  │              │ wallet       │ usdc_eoa    │ transfer       │  │
 │  │ check_wallet │              │             │                │  │
-│  │ _gas         │ get_wallet_  │ deposit_    │                │  │
-│  │              │ info         │ usdc        │                │  │
+│  │ _gas         │ get_wallet_  │ deposit_    ├────────────────┤  │
+│  │              │ info         │ usdc        │     x402 ✨    │  │
 │  │              │              │             │                │  │
-│  │              │ get_user_    │ withdraw_   │                │  │
+│  │              │ get_user_    │ withdraw_   │ x402_fetch     │  │
 │  │              │ wallets      │ usdc        │                │  │
-│  │              │              │             │                │  │
-│  │              │ get_eoa_     │ get_        │                │  │
+│  │              │              │             │ x402_payer_    │  │
+│  │              │ get_eoa_     │ get_        │ info           │  │
 │  │              │ wallets      │ transfer_   │                │  │
 │  │              │              │ status      │                │  │
 │  └──────────────┴──────────────┴─────────────┴────────────────┘  │
@@ -95,6 +95,15 @@ Done. Zero manual steps. Zero gas fees.
 │  SCA + EOA          │  │  unified balance   │  │  HTTP 402 →     │
 │  Custodial          │  │  burn/mint bridge  │  │  auto USDC pay  │
 └─────────────────────┘  └────────────────────┘  └─────────────────┘
+           │
+┌──────────▼──────────────────────────────────────────────────────┐
+│                  OTTOVault 🔒 (Arc Testnet)                      │
+│  Solidity contract · 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA │
+│                                                                  │
+│  Holds org USDC · Per-tx cap: 10 USDC · Daily cap: 100 USDC    │
+│  Agent role enforced on-chain · Whitelist · Emergency pause     │
+│  No prompt can override these limits — the EVM enforces them    │
+└─────────────────────────────────────────────────────────────────┘
                                   │
                     ┌─────────────┼──────────────┐
                ┌────▼────┐  ┌────▼──────┐  ┌────▼──────────┐
@@ -146,6 +155,27 @@ Deposit USDC → Gateway contract (Arc Testnet)
 
 The agent uses this to move USDC freely between Arc Testnet, Base Sepolia, and Avalanche Fuji.
 
+### OTTOVault — On-Chain Spending Limits
+
+OTTOVault is a custom Solidity contract that holds organizational USDC and exposes a restricted `agent` role. The AI agent can only call `transfer()` — and only within hard limits set by the admin:
+
+```
+Per-tx cap:  10 USDC  (single transfer max)
+Daily cap:   100 USDC (rolling 24h window, auto-resets)
+Whitelist:   optional — restrict to approved recipient addresses
+Pause:       admin can halt all agent operations immediately
+```
+
+These limits are enforced at the EVM level. No instruction, no prompt injection, no AI compromise can override them — the blockchain rejects the transaction before USDC moves.
+
+```
+Deployed: 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA (Arc Testnet)
+Stack:    Solidity 0.8.20 + OpenZeppelin + Foundry
+Tests:    17/17 passing
+```
+
+The agent calls `vault_status` to check available allowance, `vault_can_transfer` to preview a transfer, and `vault_transfer` to execute it — all via MCP tools wired through `invoke.ts`.
+
 ### x402 — HTTP Nanopayments for AI Agents
 
 x402 is an extension of the classic HTTP 402 "Payment Required" status code. When an API requires payment:
@@ -195,6 +225,9 @@ The agent's payer wallet (`0xA9A4...Ae96e`) holds USDC on Arc Testnet and pays f
 | `execute_gateway_mint` | Execute mint after cross-chain attestation |
 | `x402_fetch` ✨ | HTTP request with automatic x402 USDC payment |
 | `x402_payer_info` ✨ | Agent payer wallet address and USDC balances |
+| `vault_status` 🔒 | Full OTTOVault state: balance, limits, agent, admin |
+| `vault_transfer` 🔒 | Transfer USDC from vault within on-chain enforced limits |
+| `vault_can_transfer` 🔒 | Preview: would transfer succeed? (no transaction sent) |
 
 ---
 
@@ -298,13 +331,13 @@ OTTO is designed on one fundamental assumption: **the AI can make mistakes, but 
 └───────────────────────────────┬─────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────┐
-│              Circle Smart Contract Account           │
+│    OTTOVault (deployed · Arc Testnet · 0xFFfeEd...)  │
 │                                                      │
-│  Per-transaction limit:    ≤ 500 USDC  ✗ BLOCKED    │
-│  Daily spend limit:        ≤ 2,000 USDC             │
-│  Whitelisted recipients:   [Alice, Bob, Carol]       │
-│  Allowed chains:           [arcTestnet, baseSepolia] │
-│  Admin override required:  transfers > 1,000 USDC   │
+│  Per-transaction limit:    ≤ 10 USDC   ✗ BLOCKED    │
+│  Daily spend limit:        ≤ 100 USDC (24h window)  │
+│  Whitelisted recipients:   optional allowlist        │
+│  Agent role:               enforced — 1 address only │
+│  Emergency pause:          admin halts all transfers │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -312,15 +345,15 @@ Even if the agent's reasoning is manipulated or the prompt is compromised, the t
 
 ### Layered Security Model
 
-**Layer 1 — Smart Contract Limits (Circle SCA)**
-Circle's Developer Controlled Wallets use Smart Contract Accounts (ERC-4337) with programmable policy enforcement:
-- Per-transaction spending caps (e.g., max 500 USDC per transfer)
-- Daily/weekly cumulative limits per wallet
-- Recipient address whitelisting — the agent can only send to pre-approved addresses
-- Chain restrictions — transfers only to permitted destination chains
-- Cooldown periods between large transfers
+**Layer 1 — OTTOVault (Custom Solidity Contract, deployed)**
+OTTOVault is a custom treasury contract deployed on Arc Testnet. It holds organizational USDC and exposes a restricted `agent` role:
+- Per-transaction cap: max 10 USDC per transfer (configurable)
+- Daily cumulative limit: max 100 USDC / 24h rolling window (auto-resets)
+- Whitelist: optional — agent can only send to admin-approved addresses
+- Pause: admin can halt all agent operations instantly
+- Emergency withdraw: admin can always pull funds out regardless
 
-These rules are set by the organization, stored on-chain, and enforced by the contract — not by the agent's instructions. **The agent cannot bypass them.**
+These rules are enforced by Solidity + the EVM. No instruction, no prompt, no social engineering overrides them. **The blockchain rejects non-conforming transactions.**
 
 **Layer 2 — Agent Rules (agent.md)**
 The agent's behavior is governed by its system prompt (`agent.md`):
@@ -377,14 +410,17 @@ Any instruction to OTTO — whether from a legitimate user, a compromised Telegr
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `arc-wallet-mcp` — full MCP server | ✅ Built | 19 tools across 5 modules |
+| `arc-wallet-mcp` — full MCP server | ✅ Built | 22 tools across 6 modules |
 | `x402_fetch` + `x402_payer_info` tools | ✅ Built | Auto-pay on HTTP 402 |
 | x402 payer wallet (funded) | ✅ Ready | 20 USDC on Arc Testnet |
 | OTTO agent framework | ✅ Built | Claude, Telegram, bash skills |
-| All bash skill scripts | ✅ Built | arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402 |
+| All bash skill scripts | ✅ Built | arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault |
 | `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all tools wired |
-| Demo x402 oracle server | ⬜ To build | Express, 1 endpoint, ~40 lines |
-| Rebalancer skill | ⬜ To build | Bash threshold logic, ~30 lines |
+| **OTTOVault smart contract** | ✅ Deployed | Arc Testnet · 17/17 tests passing |
+| **vault_status / vault_transfer / vault_can_transfer** | ✅ Built | MCP tools + bash skills |
+| Demo x402 oracle server | ✅ Built | Express, 3 endpoints (health, eth-price, arc-stats) |
+| Contract verification on Arc Explorer | ⬜ To do | `forge verify-contract` |
+| Rebalancer skill | ⬜ To do | Bash threshold logic, ~30 lines |
 
 ---
 
@@ -405,28 +441,37 @@ Together, these form a complete stack for autonomous treasury management.
 ## Repository Structure
 
 ```
-ArcHackathon/
-├── arc-wallet-mcp/          # MCP server — Circle API tools
+OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
+├── mcp/                     # MCP server — Circle API + vault tools
 │   └── src/tools/
 │       ├── balance.ts       # get_usdc_balance, get_gateway_balance
 │       ├── wallet.ts        # create_wallet_set, create_multichain_wallet, ...
 │       ├── transfer.ts      # transfer_usdc_custodial, transfer_usdc_eoa, ...
 │       ├── deposit.ts       # deposit_usdc, withdraw_usdc
 │       ├── gateway.ts       # get_gateway_info, get_supported_chains, ...
-│       └── x402.ts          # x402_fetch, x402_payer_info ✨
+│       ├── x402.ts          # x402_fetch, x402_payer_info ✨
+│       └── vault.ts         # vault_status, vault_transfer, vault_can_transfer 🔒
 │
-└── arc-openclaw/            # OTTO agent
-    ├── agent.md             # Agent identity, rules, tool documentation
-    ├── openclaw.json        # Runtime config (model, channels, skills)
-    ├── scripts/
-    │   ├── invoke.ts        # CLI bridge: agent → MCP tools
-    │   └── setup_x402_payer.ts  # Payer wallet setup utility
-    └── skills/
-        ├── arc-balance/     # Balance query scripts
-        ├── arc-wallet/      # Wallet management scripts
-        ├── arc-transfer/    # Transfer and deposit scripts
-        ├── arc-gateway/     # Gateway info scripts
-        └── arc-x402/        # x402 payment scripts ✨
+├── agent/                   # OTTO agent (OpenClaw)
+│   ├── agent.md             # Agent identity, rules, tool docs
+│   ├── openclaw.json        # Runtime config (model, channels, skills)
+│   ├── scripts/
+│   │   └── invoke.ts        # CLI bridge: agent → MCP tools
+│   └── skills/
+│       ├── arc-balance/     # Balance query scripts
+│       ├── arc-wallet/      # Wallet management scripts
+│       ├── arc-transfer/    # Transfer and deposit scripts
+│       ├── arc-gateway/     # Gateway info scripts
+│       ├── arc-x402/        # x402 payment scripts ✨
+│       └── arc-vault/       # OTTOVault scripts 🔒
+│
+├── contracts/               # Solidity (Foundry)
+│   ├── src/OTTOVault.sol    # Treasury vault contract
+│   ├── test/OTTOVault.t.sol # 17 tests, all passing
+│   └── script/Deploy.s.sol  # Arc Testnet deployment
+│
+└── demo-server/             # x402 oracle demo (Express)
+    └── server.ts            # /eth-price, /arc-stats — pay-per-request
 ```
 
 ---
@@ -443,4 +488,4 @@ ArcHackathon/
 
 ## One Line
 
-> OTTO is the first AI treasury agent that moves money cross-chain, pays for data feeds autonomously via x402, and reports to your team — all without a single manual transaction.
+> OTTO is the first AI treasury agent that moves money cross-chain via Circle Gateway, pays for data feeds autonomously via x402, enforces spending limits through a deployed Solidity vault, and reports to your team — all without a single manual transaction.
