@@ -1,40 +1,23 @@
-# TOOLS.md - Local Notes
+# TOOLS.md — OTTO Treasury Tools
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+## Available Tool Categories
 
-## What Goes Here
+- **arc-balance** — USDC balances, gateway balance, gas checks
+- **arc-wallet** — wallet info, user wallets, EOA management
+- **arc-transfer** — cross-chain transfers via Circle Gateway
+- **arc-gateway** — gateway info, chain support, transfer status
+- **arc-x402** — x402 nanopayment fetch, payer wallet info
+- **arc-vault** — OTTOVault operations (status, transfer, deposit, payroll)
+- **arc-rebalancer** — cross-chain vault monitoring and rebalancing
 
-Things like:
+## Chains
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
+- Arc Testnet (5042002) — home chain
+- Base Sepolia (84532)
+- Avalanche Fuji (43113)
 
-## Examples
+## OTTOVault Addresses
 
-```markdown
-### Cameras
-
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
-
-### SSH
-
-- home-server → 192.168.1.100, user: admin
-
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-Add whatever helps you do your job. This is your cheat sheet.
+- Arc Testnet: 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
+- Base Sepolia: 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+- Avalanche Fuji: 0x47C1feaC66381410f5B050c39F67f15BbD058Af1

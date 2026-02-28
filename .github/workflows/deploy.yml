@@ -53,6 +53,15 @@ jobs:
             echo "→ npm install demo-server"
             npm install --prefix "$OTTO/demo-server" --prefer-offline 2>&1 | tail -2
 
+            echo "→ sync workspace files"
+            WS="$HOME/.openclaw/workspace"
+            mkdir -p "$WS"
+            for f in AGENTS.md SOUL.md IDENTITY.md TOOLS.md USER.md HEARTBEAT.md; do
+              [ -f "$OTTO/agent/$f" ] && cp "$OTTO/agent/$f" "$WS/$f"
+            done
+            rm -f "$WS/BOOTSTRAP.md"
+            echo "  Workspace synced"
+
             echo "→ restart openclaw"
             pkill -f "openclaw" 2>/dev/null && sleep 2 || true
 
