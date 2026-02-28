@@ -187,6 +187,16 @@ const VAULT_ADMIN_ABI = [
     outputs: [],
   },
   {
+    name: "adminTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
     name: "withdraw",
     type: "function",
     stateMutability: "nonpayable",
@@ -614,7 +624,7 @@ const VAULT_CONSTRUCTOR_ABI = [
   },
 ] as const;
 
-const FACTORY_ADDRESS: Address = "0x6bfebb0239d2809682d5115885e138e9eaed0821";
+const FACTORY_ADDRESS: Address = "0x533698e1226e504316c864387cbe5f73D2876eBD";
 
 const FACTORY_ABI = [
   {

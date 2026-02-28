@@ -3,7 +3,7 @@ name: arc-transfer
 version: 1.0.0
 description: "Move USDC via Circle Gateway: deposit into Gateway, withdraw, or transfer cross-chain. Use when the user wants to transfer USDC between chains, deposit to Gateway, or withdraw from Gateway."
 user-invocable: true
-metadata: {"openclaw":{"emoji":"🔀","requires":{"bins":["tsx"]}}}
+metadata: {"openclaw":{"emoji":"🔀"}}
 ---
 
 # Arc Transfer Skill

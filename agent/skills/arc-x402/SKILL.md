@@ -1,3 +1,11 @@
+---
+name: arc-x402
+version: 1.0.0
+description: "x402 nanopayment protocol: fetch paid HTTP resources with auto-payment, check payer wallet info and balance. Use when the user asks about x402 payments, paid API calls, or payer wallet status."
+user-invocable: true
+metadata: {"openclaw":{"emoji":"💳"}}
+---
+
 # arc-x402 Skill
 
 Enables the agent to make autonomous USDC micropayments for HTTP services using the x402 protocol.

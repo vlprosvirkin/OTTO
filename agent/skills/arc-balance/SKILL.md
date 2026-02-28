@@ -3,7 +3,7 @@ name: arc-balance
 version: 1.0.0
 description: "Check USDC balances on Arc Multichain Wallet. Use when the user asks about wallet balance, USDC amount, gateway balance, gas, or funds across Arc Testnet, Base Sepolia, or Avalanche Fuji."
 user-invocable: true
-metadata: {"openclaw":{"emoji":"💰","requires":{"bins":["tsx"]}}}
+metadata: {"openclaw":{"emoji":"💰"}}
 ---
 
 # Arc Balance Skill

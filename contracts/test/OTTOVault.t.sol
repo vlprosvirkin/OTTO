@@ -512,4 +512,78 @@ contract OTTOVaultTest is Test {
         );
         vault.transfer(alice, amount);
     }
+
+    // ─── Admin Send (adminTransfer) ─────────────────────────────────────────
+
+    function test_AdminCanSendToAnyAddress() public {
+        vm.prank(admin);
+        vault.adminTransfer(alice, 25e6);
+        assertEq(usdc.balanceOf(alice), 25e6);
+    }
+
+    function test_AdminSendEmitsEvent() public {
+        vm.recordLogs();
+        vm.prank(admin);
+        vault.adminTransfer(alice, 10e6);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertGt(logs.length, 0);
+    }
+
+    function test_AdminSendRejectsZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.ZeroAddress.selector);
+        vault.adminTransfer(address(0), 5e6);
+    }
+
+    function test_AdminSendRejectsZeroAmount() public {
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        vault.adminTransfer(alice, 0);
+    }
+
+    function test_NonAdminCannotAdminTransfer() public {
+        vm.prank(hacker);
+        vm.expectRevert(OTTOVault.NotAdmin.selector);
+        vault.adminTransfer(alice, 5e6);
+    }
+
+    function test_AdminSendBypassesAgentLimits() public {
+        // Admin can send more than maxPerTx (10 USDC)
+        vm.prank(admin);
+        vault.adminTransfer(alice, 50e6);
+        assertEq(usdc.balanceOf(alice), 50e6);
+    }
+
+    function test_AdminSendRespectsWhitelist() public {
+        vm.startPrank(admin);
+        vault.setWhitelistEnabled(true);
+
+        // alice is NOT whitelisted — should revert
+        vm.expectRevert(abi.encodeWithSelector(OTTOVault.RecipientNotWhitelisted.selector, alice));
+        vault.adminTransfer(alice, 5e6);
+        vm.stopPrank();
+    }
+
+    function test_AdminSendToWhitelistedAddress() public {
+        vm.startPrank(admin);
+        vault.setWhitelistEnabled(true);
+        vault.setWhitelist(alice, true);
+        vault.adminTransfer(alice, 5e6);
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(alice), 5e6);
+    }
+
+    function test_AdminSendNoWhitelistCheckWhenDisabled() public {
+        // whitelist disabled (default) — should work for any address
+        vm.prank(admin);
+        vault.adminTransfer(bob, 15e6);
+        assertEq(usdc.balanceOf(bob), 15e6);
+    }
+
+    function test_AdminSendDoesNotAffectDailySpent() public {
+        vm.prank(admin);
+        vault.adminTransfer(alice, 50e6);
+        // dailySpent should remain 0 — only agent transfers count
+        assertEq(vault.dailySpent(), 0);
+    }
 }

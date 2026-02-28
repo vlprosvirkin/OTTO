@@ -3,7 +3,7 @@ name: arc-gateway
 version: 1.0.0
 description: "Explore Circle Gateway protocol: get gateway info, list supported chains with contract addresses, check cross-chain transfer status. Use when the user asks about supported chains, gateway config, or status of a transfer."
 user-invocable: true
-metadata: {"openclaw":{"emoji":"🌉","requires":{"bins":["tsx"]}}}
+metadata: {"openclaw":{"emoji":"🌉"}}
 ---
 
 # Arc Gateway Skill

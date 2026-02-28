@@ -61,6 +61,7 @@ contract OTTOVault is ReentrancyGuard {
 
     event Deposit(address indexed from, uint256 amount);
     event AdminWithdraw(address indexed to, uint256 amount);
+    event AdminSend(address indexed to, uint256 amount);
     event AgentTransfer(address indexed to, uint256 amount, uint256 dailySpentAfter);
     event LimitsUpdated(uint256 maxPerTx, uint256 dailyLimit);
     event WhitelistUpdated(address indexed addr, bool allowed);
@@ -211,12 +212,26 @@ contract OTTOVault is ReentrancyGuard {
     }
 
     /**
-     * @notice Emergency withdraw — admin only. Bypasses agent limits.
+     * @notice Emergency withdraw to admin's own wallet. Bypasses agent limits.
      */
     function withdraw(uint256 amount) external onlyAdmin usdcReady nonReentrant {
         if (amount == 0) revert ZeroAmount();
         usdc.safeTransfer(admin, amount);
         emit AdminWithdraw(admin, amount);
+    }
+
+    /**
+     * @notice Send USDC from vault to any address. Admin only.
+     *         Enforces whitelist if enabled. No per-tx/daily limits (admin override).
+     * @param to     Recipient address (must be whitelisted if whitelist is on)
+     * @param amount Amount in USDC (6 decimals)
+     */
+    function adminTransfer(address to, uint256 amount) external onlyAdmin usdcReady nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (whitelistEnabled && !whitelist[to]) revert RecipientNotWhitelisted(to);
+        usdc.safeTransfer(to, amount);
+        emit AdminSend(to, amount);
     }
 
     // ─── Admin: Policy Management ─────────────────────────────────────────────

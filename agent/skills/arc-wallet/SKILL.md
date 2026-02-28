@@ -3,7 +3,7 @@ name: arc-wallet
 version: 1.0.0
 description: "Manage Circle wallets for Arc Multichain Wallet. Use when the user wants to create a wallet, view wallet info, list wallets, set up EOA signers, or check transaction history."
 user-invocable: true
-metadata: {"openclaw":{"emoji":"👛","requires":{"bins":["tsx"]}}}
+metadata: {"openclaw":{"emoji":"👛"}}
 ---
 
 # Arc Wallet Skill

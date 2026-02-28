@@ -1,3 +1,11 @@
+---
+name: arc-rebalancer
+version: 1.0.0
+description: "Monitor OTTOVault balances across all chains and trigger cross-chain rebalancing when thresholds are crossed. Use when the user asks about rebalancing, liquidity distribution, or vault balance monitoring."
+user-invocable: true
+metadata: {"openclaw":{"emoji":"⚖️"}}
+---
+
 # arc-rebalancer
 
 Monitor OTTOVault balances across all chains and trigger rebalancing when needed.

@@ -1,3 +1,11 @@
+---
+name: arc-vault
+version: 1.0.0
+description: "OTTOVault treasury operations: check vault status, transfer USDC, deposit, payroll, deploy user vaults, manage admin rights. Use when the user asks about vault balance, spending limits, transfers, deposits, or payroll."
+user-invocable: true
+metadata: {"openclaw":{"emoji":"🏦"}}
+---
+
 # arc-vault Skill
 
 Interact with OTTOVault treasury smart contracts and personal user vaults.
