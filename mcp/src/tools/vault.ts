@@ -49,7 +49,7 @@ const CHAIN_NAMES: Record<SupportedChain, string> = {
 };
 
 const EXPLORER_TX: Record<SupportedChain, string> = {
-  arcTestnet:    "https://explorer.testnet.arc.network/tx",
+  arcTestnet:    "https://testnet.arcscan.app/tx",
   baseSepolia:   "https://sepolia.basescan.org/tx",
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
