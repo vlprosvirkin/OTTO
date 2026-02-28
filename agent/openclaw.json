@@ -20,6 +20,10 @@
     }
   },
 
+  "gateway": {
+    "mode": "local"
+  },
+
   "skills": {
     "entries": {
       "arc-balance": { "enabled": true },
