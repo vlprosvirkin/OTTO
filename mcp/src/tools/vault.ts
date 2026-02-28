@@ -54,7 +54,12 @@ const EXPLORER_TX: Record<SupportedChain, string> = {
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
 
-// Vault addresses are resolved from user-vaults.json registry or on-chain via CREATE2.
+// Vault addresses: registry → CREATE2 on-chain → env var fallback (treasury vault).
+const VAULT_ENV_KEYS: Record<SupportedChain, string> = {
+  arcTestnet:    "VAULT_ADDRESS_ARC",
+  baseSepolia:   "VAULT_ADDRESS_BASE",
+  avalancheFuji: "VAULT_ADDRESS_FUJI",
+};
 
 // ─── Contract ABI ─────────────────────────────────────────────────────────────
 
@@ -247,6 +252,10 @@ async function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string,
       return predicted;
     }
   }
+
+  // Fallback: env vars for treasury vault (rebalancer, heartbeat — no user context)
+  const envVal = process.env[VAULT_ENV_KEYS[chain]];
+  if (envVal) return envVal as Address;
 
   throw new Error(`No vault found for chain ${chain}. Deploy a vault first or provide vault_address.`);
 }
