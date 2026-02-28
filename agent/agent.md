@@ -670,27 +670,27 @@ bash {baseDir}/scripts/x402_fetch.sh <url> POST '<json>'
 ```
 
 ### arc-vault
+
+**IMPORTANT**: Always pass `eth_address` to vault tools so the correct per-user vault is resolved.
+For Telegram users, use `get_user_address` to find `eth_address` from `user_id`.
+For webchat users, ask for their wallet address if not known.
+
 ```bash
-bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address]
-bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address]
-bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address]
-bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address] [eth_address]
+bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address] [eth_address]
+bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address] [eth_address]
+bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address] [eth_address]
 bash {skills}/arc-vault/scripts/user_vault_deploy.sh <user_id> [chain] [max_per_tx] [daily_limit]
 bash {skills}/arc-vault/scripts/user_vault_get.sh <user_id> [chain]
 bash {skills}/arc-vault/scripts/user_register_address.sh <user_id> <eth_address>
 bash {skills}/arc-vault/scripts/transfer_vault_admin.sh <user_id> [chain] [vault_address]
 bash {skills}/arc-vault/scripts/create_invoice.sh <amount_usdc> [user_id] [chain] [expected_sender]
 bash {skills}/arc-vault/scripts/vault_check_whitelist.sh <address> [chain] [vault_address]
-bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address] [eth_address]
 bash {skills}/arc-vault/scripts/check_pending_invoices.sh
 ```
 
-Deployed on all 3 chains. Default limits: 10 USDC/tx · 100 USDC/day
-```
-arcTestnet  (5042002): 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
-baseSepolia (84532):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-avalancheFuji (43113): 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-```
+Vaults are per-user, resolved from `~/.otto/user-vaults.json`. Default limits: 10 USDC/tx · 100 USDC/day
 
 ### arc-oracle
 ```bash
@@ -710,9 +710,10 @@ USYC yield management — invest idle USDC into Hashnote tokenized T-bills on Ar
 
 ### arc-rebalancer
 ```bash
-bash {skills}/arc-rebalancer/scripts/rebalance.sh [min_usdc]
+bash {skills}/arc-rebalancer/scripts/rebalance.sh [min_usdc] [eth_address]
 ```
 Checks all 3 vault balances. Returns JSON: healthy/low/empty status + shortfall + recommendation.
+Always pass `eth_address` to resolve the correct user's vaults.
 
 ---
 

@@ -120,23 +120,23 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
   // ── OTTOVault (no Supabase) ───────────────────────────────────────────
   vault_status: async (a) => {
     const { handleVaultStatus } = await import(`${MCP}/vault.js`);
-    return handleVaultStatus(a as { chain?: string; vault_address?: string });
+    return handleVaultStatus(a as { chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
   vault_transfer: async (a) => {
     const { handleVaultTransfer } = await import(`${MCP}/vault.js`);
-    return handleVaultTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string });
+    return handleVaultTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
   vault_can_transfer: async (a) => {
     const { handleVaultCanTransfer } = await import(`${MCP}/vault.js`);
-    return handleVaultCanTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string });
+    return handleVaultCanTransfer(a as { to: string; amount_usdc: number; chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
   vault_deposit: async (a) => {
     const { handleVaultDeposit } = await import(`${MCP}/vault.js`);
-    return handleVaultDeposit(a as { amount_usdc: number; chain?: string; vault_address?: string });
+    return handleVaultDeposit(a as { amount_usdc: number; chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
   rebalance_check: async (a) => {
     const { handleRebalanceCheck } = await import(`${MCP}/vault.js`);
-    return handleRebalanceCheck(a as { min_usdc?: number });
+    return handleRebalanceCheck(a as { min_usdc?: number; user_id?: string; eth_address?: string });
   },
   deploy_user_vault: async (a) => {
     const { handleDeployUserVault } = await import(`${MCP}/vault.js`);
@@ -172,11 +172,11 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
   },
   vault_check_whitelist: async (a) => {
     const { handleVaultCheckWhitelist } = await import(`${MCP}/vault.js`);
-    return handleVaultCheckWhitelist(a as { address: string; chain?: string; vault_address?: string });
+    return handleVaultCheckWhitelist(a as { address: string; chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
   vault_payroll: async (a) => {
     const { handleVaultPayroll } = await import(`${MCP}/vault.js`);
-    return handleVaultPayroll(a as { recipients: Array<{ address: string; amount_usdc: number }>; chain?: string; vault_address?: string });
+    return handleVaultPayroll(a as { recipients: Array<{ address: string; amount_usdc: number }>; chain?: string; vault_address?: string; user_id?: string; eth_address?: string });
   },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────

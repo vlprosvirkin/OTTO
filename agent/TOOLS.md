@@ -18,8 +18,7 @@
 - Base Sepolia (84532)
 - Avalanche Fuji (43113)
 
-## OTTOVault Addresses
+## OTTOVault Resolution
 
-- Arc Testnet: 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
-- Base Sepolia: 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-- Avalanche Fuji: 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+Vault addresses are per-user. Always pass `eth_address` to vault tools so the correct vault is resolved from the registry.
+Use `user_vault_get.sh <user_id>` to look up a user's vault addresses.

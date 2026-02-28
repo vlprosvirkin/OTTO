@@ -28,13 +28,11 @@ limits — the contract enforces them unconditionally.
 
 Admin operations require the user's private key (Tier 3). OTTO never has admin keys.
 
-## Deployed Addresses
+## Vault Resolution
 
-```
-arcTestnet    (5042002): 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
-baseSepolia   (84532):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-avalancheFuji (43113):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-```
+Vault addresses are per-user and resolved dynamically from `~/.otto/user-vaults.json`.
+Always pass `eth_address` to vault tools so the correct vault is found.
+Use `user_vault_get.sh <user_id>` to look up vault addresses.
 
 Default limits: **10 USDC / tx · 100 USDC / day**
 
@@ -53,16 +51,16 @@ Vault addresses are resolved automatically from the user registry or on-chain vi
 
 ```bash
 # Read full vault status: balance, limits, remaining allowance, roles
-bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address] [eth_address]
 
 # Preview if a transfer would succeed — no tx sent
-bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address] [eth_address]
 
 # Transfer USDC from vault to recipient (enforces on-chain limits)
-bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address] [eth_address]
 
 # Deposit USDC from agent wallet into vault
-bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address] [eth_address]
 ```
 
 ### Personal user vaults
@@ -119,7 +117,7 @@ bash {skills}/arc-vault/scripts/vault_check_whitelist.sh <address> [chain] [vaul
 
 ```bash
 # Batch transfer USDC to multiple recipients (pre-flight limit checks)
-bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address] [eth_address]
 # recipients_json example: [{"address":"0x...","amount_usdc":10},{"address":"0x...","amount_usdc":25}]
 ```
 
