@@ -15,8 +15,10 @@
 
   "channels": {
     "telegram": {
-      "token": { "source": "env", "id": "TELEGRAM_BOT_TOKEN" },
-      "adminChatId": { "source": "env", "id": "TELEGRAM_ADMIN_CHAT_ID" }
+      "enabled": true,
+      "dmPolicy": "open",
+      "allowFrom": ["*"],
+      "groups": { "*": { "requireMention": true } }
     },
     "webchat": {}
   },

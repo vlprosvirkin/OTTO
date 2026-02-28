@@ -62,6 +62,13 @@ jobs:
             echo "→ ensure openclaw config"
             npx --prefix "$OTTO/agent" openclaw config set gateway.mode local 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.allowedOrigins '["https://ottoarc.xyz"]' 2>/dev/null || true
+
+            echo "→ configure telegram channel"
+            npx --prefix "$OTTO/agent" openclaw config set channels.telegram.enabled true 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set channels.telegram.dmPolicy open 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set channels.telegram.allowFrom '["*"]' 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set channels.telegram.groups '{"*":{"requireMention":true}}' 2>/dev/null || true
+
             npx --prefix "$OTTO/agent" openclaw doctor --fix 2>/dev/null || true
 
             nohup npx --prefix "$OTTO/agent" openclaw gateway run \
