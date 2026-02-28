@@ -240,6 +240,8 @@ The agent's payer wallet (`0xA9A4...Ae96e`) holds USDC on Arc Testnet and pays f
 | `encode_admin_tx` 🔒 | Encode calldata for Tier 3 admin ops (user signs via signing page) |
 | `create_invoice` 🔒 | Create compliance invoice for expected incoming payment |
 | `check_invoice_status` 🔒 | Check if invoice has been paid (balance comparison) |
+| `vault_check_whitelist` 🔒 | Check if an address is whitelisted on a vault |
+| `vault_payroll` 🔒 | Batch payroll: multiple vault transfers in sequence with receipts |
 | `rebalance_check` 🔄 | Check vault balances on all chains, report health + shortfall |
 
 ---
@@ -504,13 +506,13 @@ The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO c
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `arc-wallet-mcp` — full MCP server | ✅ Built | 29 tools across 7 modules |
+| `arc-wallet-mcp` — full MCP server | ✅ Built | 35 tools across 8 modules |
 | `x402_fetch` + `x402_payer_info` tools | ✅ Built | Auto-pay on HTTP 402 |
 | x402 payer wallet (funded) | ✅ Ready | 20 USDC on Arc Testnet |
 | OTTO agent framework | ✅ Built | Claude (Anthropic), Telegram, bash skills |
-| All bash skill scripts | ✅ Built | 7 skills, 29 scripts: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer |
-| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 29 tools wired |
-| **OTTOVault smart contract** | ✅ Deployed | All 3 chains · 43 Solidity tests + 101 vitest = 144 total |
+| All bash skill scripts | ✅ Built | 7 skills, 35 scripts: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer |
+| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 35 tools wired |
+| **OTTOVault smart contract** | ✅ Deployed | All 3 chains · 43 Solidity tests + 101 vitest = 144 total, all passing |
 | **Vault tools** (status, transfer, can_transfer, deposit) | ✅ Built | MCP tools + bash skills |
 | **User ownership** (register_address, transfer_admin, encode_admin_tx) | ✅ Built | Tier 3 signing flow via ottoarc.xyz |
 | **Invoice / compliance** (create_invoice, check_invoice_status) | ✅ Built | Off-chain tracking with on-chain balance verification |
@@ -547,7 +549,7 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 │       ├── deposit.ts       # deposit_usdc, withdraw_usdc
 │       ├── gateway.ts       # get_gateway_info, get_supported_chains, ...
 │       ├── x402.ts          # x402_fetch, x402_payer_info ✨
-│       └── vault.ts         # vault/admin/invoice/rebalance tools (13 handlers) 🔒
+│       └── vault.ts         # vault/admin/invoice/rebalance/payroll tools (15 handlers) 🔒
 │
 ├── agent/                   # OTTO agent (OpenClaw)
 │   ├── agent.md             # Agent identity, rules, tool docs
@@ -560,7 +562,7 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 │       ├── arc-transfer/    # Transfer and deposit scripts
 │       ├── arc-gateway/     # Gateway info scripts
 │       ├── arc-x402/        # x402 payment scripts ✨
-│       ├── arc-vault/       # OTTOVault + admin + invoice scripts (11) 🔒
+│       ├── arc-vault/       # OTTOVault + admin + invoice + payroll scripts (13) 🔒
 │       └── arc-rebalancer/  # Cross-chain vault monitoring 🔄
 │
 ├── contracts/               # Solidity (Foundry)
