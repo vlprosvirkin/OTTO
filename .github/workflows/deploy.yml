@@ -63,6 +63,9 @@ jobs:
             npx --prefix "$OTTO/agent" openclaw config set gateway.mode local 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.allowedOrigins '["https://ottoarc.xyz"]' 2>/dev/null || true
 
+            echo "→ configure trusted proxy (Caddy)"
+            npx --prefix "$OTTO/agent" openclaw config set gateway.trustedProxies '["127.0.0.1","::1"]' 2>/dev/null || true
+
             echo "→ configure telegram channel"
             npx --prefix "$OTTO/agent" openclaw config set channels.telegram.enabled true 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set channels.telegram.dmPolicy open 2>/dev/null || true
