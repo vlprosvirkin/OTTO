@@ -60,6 +60,11 @@ jobs:
               [ -f "$OTTO/agent/$f" ] && cp "$OTTO/agent/$f" "$WS/$f"
             done
             rm -f "$WS/BOOTSTRAP.md"
+
+            # Symlink project dirs so OpenClaw finds skills, scripts, agent.md
+            ln -sfn "$OTTO/agent/skills" "$WS/skills"
+            ln -sfn "$OTTO/agent/scripts" "$WS/scripts"
+            ln -sfn "$OTTO/agent/agent.md" "$WS/agent.md"
             echo "  Workspace synced"
 
             echo "→ restart openclaw"
