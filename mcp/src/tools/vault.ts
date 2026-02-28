@@ -46,11 +46,13 @@ const EXPLORER_TX: Record<SupportedChain, string> = {
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
 
-// Default vault addresses per chain (set after deployment)
-const DEFAULT_VAULT_ADDRESSES: Record<SupportedChain, string | undefined> = {
-  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA",
-  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? undefined,
-  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? undefined,
+// Same contract address on all three chains — deterministic CREATE (same deployer + nonce)
+const DEPLOYED_VAULT = "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA";
+
+const DEFAULT_VAULT_ADDRESSES: Record<SupportedChain, string> = {
+  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? DEPLOYED_VAULT,
+  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? DEPLOYED_VAULT,
+  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? DEPLOYED_VAULT,
 };
 
 // ─── Contract ABI ─────────────────────────────────────────────────────────────
@@ -111,15 +113,7 @@ function resolveChain(chain?: string): SupportedChain {
 }
 
 function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string): Address {
-  const addr = vaultAddress ?? DEFAULT_VAULT_ADDRESSES[chain];
-  if (!addr) {
-    throw new Error(
-      `No vault address for ${chain}. ` +
-      `Set VAULT_ADDRESS_${chain === "baseSepolia" ? "BASE" : chain === "avalancheFuji" ? "FUJI" : "ARC"} ` +
-      `or pass vault_address explicitly.`
-    );
-  }
-  return addr as Address;
+  return (vaultAddress ?? DEFAULT_VAULT_ADDRESSES[chain]) as Address;
 }
 
 function getPublicClient(chain: SupportedChain) {
