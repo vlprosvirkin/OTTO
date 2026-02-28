@@ -1,3 +1,8 @@
 api.ottoarc.xyz {
-	reverse_proxy localhost:18789
+	handle /api/* {
+		reverse_proxy localhost:4402
+	}
+	handle {
+		reverse_proxy localhost:18789
+	}
 }

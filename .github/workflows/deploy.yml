@@ -50,6 +50,9 @@ jobs:
             echo "→ npm install agent"
             npm install --prefix "$OTTO/agent" --prefer-offline 2>&1 | tail -2
 
+            echo "→ npm install demo-server"
+            npm install --prefix "$OTTO/demo-server" --prefer-offline 2>&1 | tail -2
+
             echo "→ restart openclaw"
             pkill -f "openclaw" 2>/dev/null && sleep 2 || true
 
@@ -62,7 +65,14 @@ jobs:
 
             nohup npx --prefix "$OTTO/agent" openclaw gateway run \
               >> "$HOME/otto.log" 2>&1 &
-            echo "  PID: $!"
+            echo "  Gateway PID: $!"
+
+            echo "→ restart demo-server"
+            pkill -f "demo-server/server" 2>/dev/null && sleep 1 || true
+            cd "$OTTO/demo-server"
+            nohup npx tsx server.ts >> "$HOME/otto-demo.log" 2>&1 &
+            echo "  Demo-server PID: $!"
+            cd "$OTTO"
 
             echo "→ setup caddy reverse proxy"
             if ! command -v caddy &>/dev/null; then

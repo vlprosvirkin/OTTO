@@ -15,8 +15,10 @@ import { createApp } from "./app.js";
 // ─── Load .env ───────────────────────────────────────────────────────────────
 
 const _ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-if (existsSync(resolve(_ROOT, ".env"))) {
-  for (const line of readFileSync(resolve(_ROOT, ".env"), "utf-8").split("\n")) {
+
+function loadEnvFile(path: string) {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf-8").split("\n")) {
     const eq = line.indexOf("=");
     if (eq < 1) continue;
     const k = line.slice(0, eq).trim();
@@ -24,6 +26,9 @@ if (existsSync(resolve(_ROOT, ".env"))) {
     if (k && v && !process.env[k]) process.env[k] = v;
   }
 }
+
+loadEnvFile(resolve(_ROOT, ".env"));
+loadEnvFile(resolve(_ROOT, "agent", ".env"));
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
