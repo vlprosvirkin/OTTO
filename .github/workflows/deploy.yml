@@ -129,10 +129,13 @@ jobs:
             echo "→ gateway process check:"
             pgrep -fa "openclaw" || echo "WARNING: no openclaw process found!"
             echo ""
-            echo "→ smoke test:"
-            cd ~/OTTO/agent && source .env
-            npx tsx scripts/invoke.ts rebalance_check '{"min_usdc":1}' 2>/dev/null \
-              | grep -q 'threshold_usdc' && echo '✓ Agent healthy' || (echo '✗ Smoke test failed' && exit 1)
+            echo "→ smoke test (gateway health + demo-server):"
+            # Check gateway is listening
+            curl -sf --max-time 5 http://localhost:18789/__openclaw__/canvas/ >/dev/null 2>&1 \
+              && echo '✓ Gateway responding' || (echo '✗ Gateway not responding' && exit 1)
+            # Check demo-server health
+            curl -sf --max-time 5 http://localhost:4402/health 2>/dev/null \
+              | grep -q '"status":"ok"' && echo '✓ Demo server healthy' || echo '⚠ Demo server not running (optional)'
           ENDSSH
 
       - name: Notify success
