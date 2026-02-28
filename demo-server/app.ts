@@ -59,7 +59,9 @@ function verifyTelegramAuth(auth: TelegramAuth, botToken: string): boolean {
   return hmac === auth.hash;
 }
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
+// ─── Stork Oracle + Mock Fallback ────────────────────────────────────────────
+
+const STORK_REST_URL = "https://rest.jp.stork-oracle.network/v1/prices/latest";
 
 export function mockEthPrice() {
   const price = parseFloat((2847.42 + (Math.random() - 0.5) * 20).toFixed(2));
@@ -68,9 +70,40 @@ export function mockEthPrice() {
     price,
     change24h: parseFloat(((Math.random() - 0.5) * 4).toFixed(2)),
     volume24h: 12_480_000_000,
-    source:    "OTTO Demo Oracle",
+    source:    "OTTO Demo Oracle (mock)",
     timestamp: new Date().toISOString(),
   };
+}
+
+/** Try Stork REST API first, fall back to mock on failure or missing key. */
+export async function fetchEthPrice(): Promise<ReturnType<typeof mockEthPrice>> {
+  const apiKey = process.env.STORK_API_KEY;
+  if (!apiKey) return mockEthPrice();
+
+  try {
+    const resp = await fetch(`${STORK_REST_URL}?assets=ETHUSD`, {
+      headers: { Authorization: `Basic ${apiKey}` },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!resp.ok) return mockEthPrice();
+
+    const json = await resp.json() as { data?: { ETHUSD?: { price?: string; timestamp_ns?: number } } };
+    const feed = json?.data?.ETHUSD;
+    if (!feed?.price) return mockEthPrice();
+
+    return {
+      symbol:    "ETH/USD",
+      price:     parseFloat(parseFloat(feed.price).toFixed(2)),
+      change24h: parseFloat(((Math.random() - 0.5) * 4).toFixed(2)),
+      volume24h: 12_480_000_000,
+      source:    "Stork Oracle",
+      timestamp: feed.timestamp_ns
+        ? new Date(feed.timestamp_ns / 1_000_000).toISOString()
+        : new Date().toISOString(),
+    };
+  } catch {
+    return mockEthPrice();
+  }
 }
 
 export function mockArcStats() {
@@ -85,6 +118,55 @@ export function mockArcStats() {
     source:              "OTTO Demo Oracle",
     timestamp:           new Date().toISOString(),
   };
+}
+
+// ─── Telegram notification ───────────────────────────────────────────────────
+
+const CHAIN_NAMES: Record<string, string> = {
+  arcTestnet: "Arc Testnet",
+  baseSepolia: "Base Sepolia",
+  avalancheFuji: "Avalanche Fuji",
+};
+
+async function sendBindNotification(
+  chatId: number,
+  address: string,
+  firstName: string | undefined,
+  vaults: Partial<Record<string, string>> | undefined,
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+
+  const name = firstName || "there";
+  const addr = `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+  let vaultLines = "";
+  if (vaults && Object.keys(vaults).length > 0) {
+    const lines = Object.entries(vaults)
+      .filter(([, v]) => v)
+      .map(([chain, v]) => `  ${CHAIN_NAMES[chain] || chain}: <code>${v!.slice(0, 6)}...${v!.slice(-4)}</code>`);
+    vaultLines = lines.length
+      ? `\n\n<b>Your vaults:</b>\n${lines.join("\n")}`
+      : "";
+  }
+
+  const text = [
+    `Hey ${name}, your wallet <code>${addr}</code> is now linked to this Telegram account.`,
+    vaultLines,
+    `\n<b>What I can do for you:</b>`,
+    `• Check vault balances and status`,
+    `• Transfer USDC within on-chain limits`,
+    `• Run payroll to multiple recipients`,
+    `• Monitor and rebalance across chains`,
+    `• Fetch paid oracle data via x402`,
+    `\nJust message me here — I'm OTTO, your treasury agent.`,
+  ].join("\n");
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+  });
 }
 
 // ─── App Factory ─────────────────────────────────────────────────────────────
@@ -119,8 +201,12 @@ export function createApp(
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 
   // POST /api/bind  — bind wallet ↔ Telegram account
-  app.post("/api/bind", (req, res) => {
-    const { address, tg } = req.body as { address?: string; tg?: TelegramAuth };
+  app.post("/api/bind", async (req, res) => {
+    const { address, tg, vaults } = req.body as {
+      address?: string;
+      tg?: TelegramAuth;
+      vaults?: Partial<Record<string, string>>;
+    };
     if (!address || !tg) {
       res.status(400).json({ error: "address and tg required" });
       return;
@@ -149,6 +235,9 @@ export function createApp(
       tg_first_name: tg.first_name,
     };
     saveUsers(registry);
+
+    // Send welcome message via Telegram with vault info
+    sendBindNotification(tg.id, address, tg.first_name, vaults).catch(() => {});
 
     res.json({ ok: true, tg_id: tg.id, address: address.toLowerCase() });
   });
@@ -235,7 +324,7 @@ export function createApp(
   }
 
   // Paid routes — only reached after valid payment
-  app.get("/eth-price", (_req, res) => { res.json(mockEthPrice()); });
+  app.get("/eth-price", async (_req, res) => { res.json(await fetchEthPrice()); });
   app.get("/arc-stats",  (_req, res) => { res.json(mockArcStats()); });
 
   return app;
