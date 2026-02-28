@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decentralized Autonomous Corporation — OTTO</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: #1e1e2e;
+      --text: #e0e0e8;
+      --muted: #8888a0;
+      --accent: #6c5ce7;
+      --accent2: #00cec9;
+      --warn: #fdcb6e;
+      --danger: #ff6b6b;
+      --green: #55efc4;
+      --radius: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 0;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+      background: linear-gradient(180deg, #12121a 0%, #0a0a0f 100%);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero h1 {
+      font-size: 2.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    section {
+      margin-bottom: 56px;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: #fff;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 28px 0 12px;
+      color: var(--accent2);
+    }
+
+    p { margin-bottom: 14px; }
+
+    .roles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .role-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .role-card .icon {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+
+    .role-card h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+
+    .role-card p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .step-number {
+      position: absolute;
+      top: -12px;
+      left: 20px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 700;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .flow {
+      background: #0d0d14;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 12px 0;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.84rem;
+      color: var(--accent2);
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .constraints {
+      margin: 12px 0 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .constraints li {
+      padding: 4px 0 4px 22px;
+      position: relative;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .constraints li::before {
+      content: '›';
+      position: absolute;
+      left: 6px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 0.9rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--accent2);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .diagram-wrap {
+      background: #0d0d14;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+
+    .diagram-wrap pre {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .principle {
+      background: linear-gradient(135deg, rgba(108, 92, 231, 0.1), rgba(0, 206, 201, 0.1));
+      border: 1px solid rgba(108, 92, 231, 0.3);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-top: 28px;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+
+    .principle strong {
+      color: var(--accent2);
+    }
+
+    .emergency {
+      border-color: rgba(255, 107, 107, 0.3);
+      background: rgba(255, 107, 107, 0.06);
+    }
+
+    .emergency .flow {
+      color: var(--danger);
+    }
+
+    .check { color: var(--green); }
+    .cross { color: var(--danger); }
+
+    .timeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 16px 0;
+      font-size: 0.84rem;
+      flex-wrap: wrap;
+    }
+
+    .timeline-block {
+      padding: 8px 16px;
+      border-radius: 6px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .timeline-block.lock {
+      background: rgba(255, 107, 107, 0.12);
+      color: var(--danger);
+      border: 1px solid rgba(255, 107, 107, 0.25);
+    }
+
+    .timeline-block.open {
+      background: rgba(85, 239, 196, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(85, 239, 196, 0.25);
+    }
+
+    .timeline-arrow {
+      color: var(--muted);
+      padding: 0 6px;
+      font-size: 1rem;
+    }
+
+    footer {
+      text-align: center;
+      padding: 32px 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* ═══════ Full-screen Architecture Section ═══════ */
+    @keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+
+    .arch-section {
+      position: relative;
+      min-height: 100vh;
+      background: #04060e;
+      padding: 70px 32px 60px;
+      overflow: hidden;
+    }
+    .arch-section::before, .arch-section::after {
+      content:''; position:absolute; border-radius:50%; pointer-events:none;
+    }
+    .arch-section::before {
+      top:5%; left:20%; width:700px; height:700px;
+      background: radial-gradient(circle, rgba(0,206,201,0.045) 0%, transparent 70%);
+    }
+    .arch-section::after {
+      bottom:0; right:10%; width:600px; height:600px;
+      background: radial-gradient(circle, rgba(108,92,231,0.04) 0%, transparent 70%);
+    }
+
+    .arch-header {
+      text-align:center; margin-bottom:48px; position:relative; z-index:1;
+      animation: fadeInUp .6s ease-out both;
+    }
+    .arch-badge {
+      display:inline-block; background:rgba(108,92,231,0.12); border:1px solid rgba(108,92,231,0.3);
+      color:#a78bfa; font-family:'JetBrains Mono','Fira Code',monospace; font-size:.68rem;
+      font-weight:500; letter-spacing:.15em; padding:5px 16px; border-radius:20px; margin-bottom:18px;
+    }
+    .arch-header h2 {
+      font-size:2.6rem; font-weight:800; letter-spacing:-.02em; border:none; padding:0; margin:0 0 10px;
+      background:linear-gradient(135deg,#a78bfa,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .arch-header p { color:#4a4a6a; font-size:1rem; margin:0; }
+
+    .arch-wrap {
+      position:relative; max-width:1360px; margin:0 auto; z-index:1;
+    }
+
+    .arch-grid {
+      display:grid;
+      grid-template-columns: 260px 1fr 420px 1fr 300px;
+      grid-template-rows: 90px 40px 120px 120px 50px 120px 50px 110px 100px;
+      grid-template-areas:
+        ".          .     guardian   .        .        "
+        ".          .     g2pool     .        .        "
+        "investor   i2p   pool      p2m      manager  "
+        "investor   p2i   pool      p2pay    manager  "
+        ".          .     pool2b     .        p2pay2   "
+        "lp         .     usyc      .        payees   "
+        "lp2v       .     u2h       .        oracles  "
+        "voting     v2c   config    .        oracles  "
+        ".          .     .         .        .        ";
+      align-items: start;
+      justify-items: stretch;
+    }
+
+    /* ── Node cards ── */
+    .n {
+      background: rgba(8,10,22,0.85);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 20px 22px;
+      position: relative;
+      transition: transform .25s, box-shadow .35s, border-color .35s;
+      backdrop-filter: blur(8px);
+      animation: fadeInUp .5s ease-out both;
+    }
+    .n:hover { transform: translateY(-3px); }
+    .n .n-title {
+      font-size: .95rem; font-weight: 700; margin-bottom: 4px; color: #fff;
+    }
+    .n .n-sub {
+      font-size: .78rem; color: #5a5a7a; margin-bottom: 10px; line-height: 1.4;
+    }
+    .n .n-actions { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+
+    .tag {
+      display:inline-block; font-size:.65rem; font-weight:600; padding:3px 9px;
+      border-radius:4px; letter-spacing:.02em; white-space:nowrap;
+    }
+    .tag.can { background:rgba(85,239,196,0.1); border:1px solid rgba(85,239,196,0.25); color:#55efc4; }
+    .tag.no  { background:rgba(255,107,107,0.06); border:1px solid rgba(255,107,107,0.18); color:#ff6b6b; font-size:.6rem; }
+    .tag.yield { background:rgba(253,203,110,0.1); border:1px solid rgba(253,203,110,0.25); color:#fdcb6e; }
+    .tag.info { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#6a6a8a; }
+
+    .n .n-checks {
+      list-style:none; margin:10px 0 0; padding:0;
+      font-family:'JetBrains Mono',monospace; font-size:.7rem; line-height:1.7;
+    }
+    .n .n-checks li { color:#5a5a7a; }
+    .n .n-checks li .ck { color:#55efc4; }
+    .n .n-checks li .cy { color:#fdcb6e; }
+
+    /* ── Per-node accent colors ── */
+    .n.guardian { border-color: rgba(255,107,107,0.25); animation-delay:.05s; }
+    .n.guardian:hover { box-shadow: 0 0 40px rgba(255,107,107,0.12); border-color:rgba(255,107,107,0.5); }
+    .n.guardian .n-title { color:#ff6b6b; }
+
+    .n.investor { border-color: rgba(108,92,231,0.25); animation-delay:.1s; }
+    .n.investor:hover { box-shadow: 0 0 40px rgba(108,92,231,0.12); border-color:rgba(108,92,231,0.5); }
+
+    .n.pool { border-color: rgba(0,206,201,0.3); animation-delay:.15s; padding:28px 26px; }
+    .n.pool:hover { box-shadow: 0 0 60px rgba(0,206,201,0.1); border-color:rgba(0,206,201,0.6); }
+    .n.pool .n-title { color:#22d3ee; font-size:1.2rem; }
+
+    .n.manager { border-color: rgba(108,92,231,0.25); animation-delay:.2s; }
+    .n.manager:hover { box-shadow: 0 0 40px rgba(108,92,231,0.12); border-color:rgba(108,92,231,0.5); }
+
+    .n.payees { border-color: rgba(85,239,196,0.2); animation-delay:.25s; }
+    .n.payees:hover { box-shadow: 0 0 40px rgba(85,239,196,0.1); border-color:rgba(85,239,196,0.4); }
+
+    .n.lp { border-color: rgba(108,92,231,0.2); animation-delay:.3s; }
+    .n.lp:hover { box-shadow: 0 0 30px rgba(108,92,231,0.1); border-color:rgba(108,92,231,0.4); }
+
+    .n.usyc { border-color: rgba(253,203,110,0.25); animation-delay:.35s; }
+    .n.usyc:hover { box-shadow: 0 0 40px rgba(253,203,110,0.1); border-color:rgba(253,203,110,0.5); }
+    .n.usyc .n-title { color:#fdcb6e; }
+
+    .n.voting { border-color: rgba(108,92,231,0.2); animation-delay:.4s; }
+    .n.voting:hover { box-shadow: 0 0 30px rgba(108,92,231,0.1); border-color:rgba(108,92,231,0.4); }
+
+    .n.config { border-color: rgba(255,255,255,0.08); animation-delay:.45s; }
+    .n.config:hover { box-shadow: 0 0 25px rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.15); }
+
+    .n.oracles { border-color: rgba(255,255,255,0.08); animation-delay:.5s; }
+    .n.oracles:hover { box-shadow: 0 0 25px rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.15); }
+
+    /* ── Connection lines (grid gaps) ── */
+    .conn {
+      display:flex; align-items:center; justify-content:center; position:relative;
+    }
+
+    .conn-v { flex-direction:column; }
+
+    .conn-line {
+      position:absolute; border-radius:2px;
+    }
+    .conn-line.h { height:2px; width:80%; left:10%; top:50%; }
+    .conn-line.v { width:2px; height:70%; top:15%; left:50%; }
+
+    .conn-label {
+      position:relative; z-index:2;
+      font-family:'JetBrains Mono',monospace; font-size:.65rem; font-weight:500;
+      padding:3px 10px; border-radius:10px; white-space:nowrap;
+    }
+
+    /* Animated pulse dot on connections */
+    .conn-dot {
+      position:absolute; width:6px; height:6px; border-radius:50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    /* ── Legend ── */
+    .arch-legend {
+      display:flex; justify-content:center; gap:28px; flex-wrap:wrap;
+      margin-top:40px; position:relative; z-index:1;
+      animation: fadeInUp .5s ease-out .6s both;
+    }
+    .arch-legend-item {
+      display:flex; align-items:center; gap:8px; font-size:.75rem; color:#5a5a7a;
+    }
+    .arch-legend-item .ln {
+      width:24px; height:2px; border-radius:1px;
+    }
+
+    @media (max-width: 1100px) {
+      .arch-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-template-areas: none;
+        gap: 16px;
+      }
+      .arch-grid > * { grid-area: auto !important; }
+      .conn { display: none; }
+      .arch-header h2 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="badge">Architecture Spec</div>
+  <h1>Decentralized Autonomous Corporation</h1>
+  <p>How autonomous treasury management works &mdash; from fund creation to invoicing, payroll, budgeting, yield optimization on idle balances, and emergency controls</p>
+</div>
+
+<div class="container">
+
+  <!-- Participants -->
+  <section>
+    <h2>Participants</h2>
+    <div class="roles">
+      <div class="role-card">
+        <div class="icon">&#x1f4b0;</div>
+        <h4>Investor / LP Holder</h4>
+        <p>Deposits funds into the treasury, receives LP tokens representing their share, and governs the corporation through token-weighted voting. A single role &mdash; every contributor is also a decision-maker.</p>
+      </div>
+      <div class="role-card">
+        <div class="icon">&#x1f4ca;</div>
+        <h4>Manager</h4>
+        <p>Operates the treasury &mdash; issues invoices, approves expenses, runs payroll, and manages budgets. Cannot withdraw funds directly.</p>
+      </div>
+      <div class="role-card">
+        <div class="icon">&#x1f6e1;</div>
+        <h4>Guardian</h4>
+        <p>Emergency oversight. Can freeze the entire corporation in case of an emergency. Controls global safety parameters.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lifecycle -->
+  <section>
+    <h2>Corporation Lifecycle</h2>
+
+    <!-- 1. Creation -->
+    <div class="step">
+      <div class="step-number">1</div>
+      <h3>Corporation Creation (Factory)</h3>
+      <p>The Factory deploys a complete set of contracts for each DAC:</p>
+      <ul class="constraints">
+        <li><strong>Pool (Treasury)</strong> &mdash; holds all corporation assets</li>
+        <li><strong>LP Token</strong> &mdash; non-transferable share of participation</li>
+        <li><strong>Voting</strong> &mdash; governance and decision-making module</li>
+        <li><strong>Configuration</strong> &mdash; corporation rules (fees, limits, windows, budgets)</li>
+      </ul>
+      <p style="margin-top:12px; color: var(--muted); font-size: 0.88rem;">After creation, the Factory renounces ownership &mdash; the corporation becomes fully self-governing.</p>
+    </div>
+
+    <!-- 2. Fundraising -->
+    <div class="step">
+      <div class="step-number">2</div>
+      <h3>Fundraising</h3>
+      <div class="flow">Investor &rarr; deposits funds &rarr; Pool values contribution via oracle &rarr;
+&rarr; mints LP tokens proportional to deposit &rarr; minus entry fee to Manager</div>
+      <p><strong>Constraints:</strong></p>
+      <ul class="constraints">
+        <li>Only during the designated fundraising window</li>
+        <li>Minimum and maximum deposit size enforced</li>
+        <li>Private corporations &mdash; whitelist-only addresses</li>
+        <li>LP tokens are frozen for N hours after deposit</li>
+      </ul>
+    </div>
+
+    <!-- 3. Operations -->
+    <div class="step">
+      <div class="step-number">3</div>
+      <h3>Treasury Operations (Manager)</h3>
+      <div class="flow">Manager &rarr; submits an expense &rarr; Pool validates:
+  <span class="check">&#10003;</span> Recipient is on the approved payee whitelist
+  <span class="check">&#10003;</span> Expense category is within the approved budget
+  <span class="check">&#10003;</span> Amount is within per-tx and daily spending caps
+  <span class="check">&#10003;</span> Invoice reference is attached and valid
+&rarr; Pool executes the payment on behalf of the corporation</div>
+      <p>The Manager <strong>cannot</strong> withdraw assets freely &mdash; every outflow must pass through approved channels: invoices, payroll schedules, or budgeted expense categories. Validators decode each transaction and verify its legitimacy.</p>
+
+      <p style="margin-top: 16px;"><strong>Operation types:</strong></p>
+      <ul class="constraints">
+        <li><strong>Invoices</strong> &mdash; pay external vendors and service providers against submitted invoices</li>
+        <li><strong>Payroll</strong> &mdash; recurring salary payments to employees on a set schedule</li>
+        <li><strong>Budgeting</strong> &mdash; allocate funds to departments or categories with spending caps</li>
+        <li><strong>Expense approvals</strong> &mdash; one-off payments within pre-approved budget lines</li>
+      </ul>
+    </div>
+
+    <!-- 4. Yield Optimization -->
+    <div class="step">
+      <div class="step-number">4</div>
+      <h3>Yield Optimization (Idle Balance Management)</h3>
+      <div class="flow">Pool monitors idle USDC balance &rarr;
+  <span class="check">&#10003;</span> Calculates reserve needed for upcoming payroll + invoices
+  <span class="check">&#10003;</span> Sweeps excess USDC into USYC (tokenized US T-bills)
+  <span class="check">&#10003;</span> USYC accrues yield continuously (~5% APY)
+  <span class="check">&#10003;</span> Auto-redeems USYC back to USDC when liquidity is needed</div>
+      <p>Idle treasury balances are never left sitting unproductive. The Pool automatically invests surplus USDC into <strong>USYC</strong> (Hashnote tokenized T-bills), earning risk-free yield on idle funds while maintaining enough liquid USDC to cover short-term obligations.</p>
+
+      <p style="margin-top: 16px;"><strong>How it works:</strong></p>
+      <ul class="constraints">
+        <li><strong>Reserve threshold</strong> &mdash; Pool keeps enough liquid USDC to cover N days of projected expenses</li>
+        <li><strong>Auto-sweep</strong> &mdash; any balance above the threshold is deposited into USYC</li>
+        <li><strong>Auto-redeem</strong> &mdash; when liquid balance drops below threshold, USYC is redeemed back to USDC</li>
+        <li><strong>Yield accrual</strong> &mdash; USYC appreciates in value continuously, increasing the total treasury value</li>
+      </ul>
+
+      <div class="flow" style="color: var(--warn);">Example: $100k treasury, $20k monthly burn
+  &rarr; Reserve: $30k USDC (liquid, 1.5x monthly burn)
+  &rarr; Invested: $70k in USYC earning ~5% APY
+  &rarr; Yield: ~$3,500/year on idle funds</div>
+    </div>
+
+    <!-- 5. Withdrawal -->
+    <div class="step">
+      <div class="step-number">5</div>
+      <h3>Withdrawal</h3>
+      <div class="flow">Investor &rarr; requests withdrawal &rarr; Pool calculates:
+  1. Proportional share of all assets
+  2. Performance fee (if LP price increased since entry)
+  3. Rage quit fee (if outside withdrawal window)
+&rarr; Burns LP tokens &rarr; Transfers asset share to investor</div>
+      <p><strong>Withdrawal windows</strong> operate cyclically:</p>
+      <div class="timeline">
+        <div class="timeline-block lock">Lock N days</div>
+        <span class="timeline-arrow">&rarr;</span>
+        <div class="timeline-block open">Withdrawal M days</div>
+        <span class="timeline-arrow">&rarr;</span>
+        <div class="timeline-block lock">Lock</div>
+        <span class="timeline-arrow">&rarr;</span>
+        <div class="timeline-block open">Window</div>
+        <span class="timeline-arrow">&rarr;</span>
+        <span style="color: var(--muted);">&hellip;</span>
+      </div>
+      <p style="font-size: 0.9rem; color: var(--muted);">Withdrawing outside the window incurs a rage quit fee.</p>
+    </div>
+
+    <!-- 6. Manager Fees -->
+    <div class="step">
+      <div class="step-number">6</div>
+      <h3>Manager Fees</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Fee</th>
+            <th>When</th>
+            <th>Logic</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Entry fee</td>
+            <td>On deposit</td>
+            <td>% of minted LP tokens</td>
+          </tr>
+          <tr>
+            <td>Management fee</td>
+            <td>Continuous</td>
+            <td>Annual % of AUM, accrued every second</td>
+          </tr>
+          <tr>
+            <td>Performance fee</td>
+            <td>On investor withdrawal</td>
+            <td>% of profit (if LP price increased)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size: 0.9rem; color: var(--muted);">The Manager claims fees via a separate transaction &mdash; receiving a proportional share of all pool assets.</p>
+    </div>
+
+    <!-- 7. Governance -->
+    <div class="step">
+      <div class="step-number">7</div>
+      <h3>Governance (Voting)</h3>
+      <div class="flow">LP Holder &rarr; creates proposal &rarr; Token-weighted vote &rarr;
+&rarr; If quorum reached and majority in favor &rarr; Pool executes action</div>
+      <p><strong>What can be proposed:</strong></p>
+      <ul class="constraints">
+        <li>Replace the Manager (if allowed by configuration)</li>
+        <li>Remove a payee from the approved whitelist</li>
+        <li>Adjust budget caps or spending limits</li>
+        <li>Add or remove approved expense categories</li>
+        <li>Change yield reserve threshold or disable auto-sweep</li>
+      </ul>
+      <p style="margin-top: 12px;"><strong>Constraints:</strong></p>
+      <ul class="constraints">
+        <li>The Manager can submit any type of proposal</li>
+        <li>Regular investors &mdash; only the actions listed above</li>
+        <li>A minimum LP token share is required to create a proposal</li>
+        <li>Votes are counted by snapshot (at the moment of proposal creation)</li>
+      </ul>
+    </div>
+
+    <!-- 8. Emergency Stop -->
+    <div class="step emergency">
+      <div class="step-number" style="background: var(--danger);">8</div>
+      <h3>Emergency Stop</h3>
+      <div class="flow">Guardian &rarr; activates emergency stop &rarr;
+  <span class="cross">&#10007;</span> All operations blocked (invoices, payroll, expenses)
+  <span class="cross">&#10007;</span> Deposits blocked
+  <span class="cross">&#10007;</span> New proposals blocked
+  <span class="check">&#10003;</span> Withdrawals WITHOUT penalty &mdash; allowed</div>
+    </div>
+  </section>
+
+  <!-- Core Principle -->
+  <section>
+    <h2>Core Principle</h2>
+    <div class="principle">
+      <strong>The Manager operates, but cannot extract funds.</strong> Idle treasury balances are never left unproductive &mdash; surplus USDC is automatically swept into USYC (tokenized T-bills) to earn yield. Investors cannot run day-to-day operations, but can vote to replace the Manager or restrict their authority. The Guardian can freeze everything in an emergency.
+    </div>
+  </section>
+
+</div>
+
+<!-- ══════════════ Full-screen DAC Architecture ══════════════ -->
+<section class="arch-section">
+  <div class="arch-header">
+    <div class="arch-badge">ARCHITECTURE</div>
+    <h2>Decentralized Autonomous Company</h2>
+    <p>DAC &mdash; how components interact, what each participant can and cannot do</p>
+  </div>
+
+  <div class="arch-wrap">
+    <div class="arch-grid">
+
+      <!-- Row 1: Guardian -->
+      <div class="n guardian" style="grid-area:guardian;">
+        <div class="n-title">Guardian</div>
+        <div class="n-sub">Emergency oversight &amp; global safety</div>
+        <div class="n-actions">
+          <span class="tag can">freeze all</span>
+          <span class="tag no">CANNOT spend</span>
+        </div>
+      </div>
+
+      <!-- Connection: Guardian → Pool -->
+      <div class="conn conn-v" style="grid-area:g2pool;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,#ff6b6b,rgba(255,107,107,0.2));"></div>
+        <div class="conn-dot" style="background:#ff6b6b; left:calc(50% - 3px); top:20%; animation-delay:0s;"></div>
+        <span class="conn-label" style="background:rgba(255,107,107,0.1); color:#ff6b6b; border:1px solid rgba(255,107,107,0.2);">emergency stop</span>
+      </div>
+
+      <!-- Row 2-3: Investor -->
+      <div class="n investor" style="grid-area:investor;">
+        <div class="n-title">Investor / LP Holder</div>
+        <div class="n-sub">Deposits funds into treasury, receives LP tokens, governs corporation through token-weighted voting</div>
+        <div class="n-actions">
+          <span class="tag can">deposit</span>
+          <span class="tag can">withdraw</span>
+          <span class="tag can">vote</span>
+          <span class="tag can">propose</span>
+        </div>
+        <div class="n-actions" style="margin-top:6px;">
+          <span class="tag no">CANNOT operate treasury</span>
+          <span class="tag no">CANNOT pay invoices</span>
+        </div>
+      </div>
+
+      <!-- Connection: Investor → Pool -->
+      <div class="conn" style="grid-area:i2p;">
+        <div class="conn-line h" style="background:linear-gradient(to right,#6c5ce7,rgba(108,92,231,0.2));"></div>
+        <div class="conn-dot" style="background:#6c5ce7; top:calc(50% - 3px); right:10%; animation-delay:.3s;"></div>
+        <span class="conn-label" style="background:rgba(108,92,231,0.1); color:#a78bfa; border:1px solid rgba(108,92,231,0.2);">deposit USDC &rarr;</span>
+      </div>
+
+      <!-- Connection: Pool → Investor -->
+      <div class="conn" style="grid-area:p2i;">
+        <div class="conn-line h" style="background:linear-gradient(to left,#55efc4,rgba(85,239,196,0.2));"></div>
+        <div class="conn-dot" style="background:#55efc4; top:calc(50% - 3px); left:10%; animation-delay:.6s;"></div>
+        <span class="conn-label" style="background:rgba(85,239,196,0.1); color:#55efc4; border:1px solid rgba(85,239,196,0.2);">&larr; withdraw share</span>
+      </div>
+
+      <!-- Row 2-4: Pool (Treasury) — center, big -->
+      <div class="n pool" style="grid-area:pool;">
+        <div class="n-title">Pool (Treasury)</div>
+        <div class="n-sub">Holds all corporation assets in USDC. Every outflow is validated on-chain.</div>
+        <ul class="n-checks">
+          <li><span class="ck">&#10003;</span> validates every outgoing payment</li>
+          <li><span class="ck">&#10003;</span> enforces per-tx &amp; daily spending caps</li>
+          <li><span class="ck">&#10003;</span> checks recipient against payee whitelist</li>
+          <li><span class="ck">&#10003;</span> verifies budget category &amp; invoice reference</li>
+          <li><span class="cy">&#10003;</span> sweeps idle USDC &rarr; USYC for yield</li>
+          <li><span class="cy">&#10003;</span> auto-redeems USYC when liquidity needed</li>
+        </ul>
+      </div>
+
+      <!-- Connection: Pool → Manager -->
+      <div class="conn" style="grid-area:p2m;">
+        <div class="conn-line h" style="background:linear-gradient(to right,rgba(108,92,231,0.2),#6c5ce7);"></div>
+        <div class="conn-dot" style="background:#6c5ce7; top:calc(50% - 3px); left:15%; animation-delay:.9s;"></div>
+        <span class="conn-label" style="background:rgba(108,92,231,0.1); color:#a78bfa; border:1px solid rgba(108,92,231,0.2);">&larr; submit expense</span>
+      </div>
+
+      <!-- Row 2-3: Manager -->
+      <div class="n manager" style="grid-area:manager;">
+        <div class="n-title">Manager</div>
+        <div class="n-sub">Operates treasury day-to-day &mdash; invoicing, payroll, budgeting, expense approvals</div>
+        <div class="n-actions">
+          <span class="tag can">invoices</span>
+          <span class="tag can">payroll</span>
+          <span class="tag can">budgets</span>
+          <span class="tag can">expenses</span>
+          <span class="tag can">propose</span>
+        </div>
+        <div class="n-actions" style="margin-top:6px;">
+          <span class="tag no">CANNOT withdraw funds</span>
+          <span class="tag no">CANNOT bypass validation</span>
+        </div>
+      </div>
+
+      <!-- Connection: Pool → Payees -->
+      <div class="conn conn-v" style="grid-area:p2pay;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,rgba(85,239,196,0.15),#55efc4); height:50%; top:25%;"></div>
+      </div>
+      <div class="conn" style="grid-area:p2pay2;">
+        <div class="conn-line h" style="background:linear-gradient(to right,rgba(85,239,196,0.2),#55efc4);"></div>
+        <div class="conn-dot" style="background:#55efc4; top:calc(50% - 3px); right:15%; animation-delay:1.2s;"></div>
+        <span class="conn-label" style="background:rgba(85,239,196,0.1); color:#55efc4; border:1px solid rgba(85,239,196,0.2);">pay validated &rarr;</span>
+      </div>
+
+      <!-- Connection: Pool → bottom -->
+      <div class="conn conn-v" style="grid-area:pool2b;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,rgba(0,206,201,0.3),rgba(253,203,110,0.3)); height:80%; top:0;"></div>
+      </div>
+
+      <!-- Row 5: LP Token -->
+      <div class="n lp" style="grid-area:lp;">
+        <div class="n-title">LP Token</div>
+        <div class="n-sub">Non-transferable share of participation = voting weight</div>
+        <div class="n-actions">
+          <span class="tag info">mint on deposit</span>
+          <span class="tag info">burn on withdraw</span>
+        </div>
+      </div>
+
+      <!-- Row 5: USYC -->
+      <div class="n usyc" style="grid-area:usyc;">
+        <div class="n-title">USYC (Tokenized T-Bills)</div>
+        <div class="n-sub">Hashnote &mdash; US Treasury yield on idle funds</div>
+        <div class="n-actions">
+          <span class="tag yield">~5% APY</span>
+          <span class="tag yield">auto-sweep</span>
+          <span class="tag yield">auto-redeem</span>
+        </div>
+        <div class="n-sub" style="margin-top:8px; margin-bottom:0; font-family:'JetBrains Mono',monospace; font-size:.68rem; color:#fdcb6e;">
+          idle USDC &rarr; USYC &rarr; yield accrues &rarr; redeem when needed
+        </div>
+      </div>
+
+      <!-- Row 5: Payees -->
+      <div class="n payees" style="grid-area:payees;">
+        <div class="n-title">Approved Payees</div>
+        <div class="n-sub">Vendors, contractors, employees &mdash; whitelist-only recipients</div>
+        <div class="n-actions">
+          <span class="tag can">receive USDC</span>
+          <span class="tag info">via invoice / payroll</span>
+        </div>
+      </div>
+
+      <!-- Connection: LP → Voting -->
+      <div class="conn conn-v" style="grid-area:lp2v;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,#6c5ce7,rgba(108,92,231,0.2)); height:60%; top:20%;"></div>
+        <div class="conn-dot" style="background:#6c5ce7; left:calc(50% - 3px); bottom:25%; animation-delay:1.5s;"></div>
+        <span class="conn-label" style="background:rgba(108,92,231,0.1); color:#a78bfa; border:1px solid rgba(108,92,231,0.2);">vote weight</span>
+      </div>
+
+      <!-- Connection: USYC ↔ Hashnote -->
+      <div class="conn conn-v" style="grid-area:u2h;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,#fdcb6e,rgba(253,203,110,0.2)); height:50%; top:25%;"></div>
+      </div>
+
+      <!-- Row 6: Voting -->
+      <div class="n voting" style="grid-area:voting;">
+        <div class="n-title">Governance Voting</div>
+        <div class="n-sub">Token-weighted proposals, quorum + majority required</div>
+        <div class="n-actions">
+          <span class="tag can">replace manager</span>
+          <span class="tag can">adjust budgets</span>
+          <span class="tag can">change whitelist</span>
+        </div>
+      </div>
+
+      <!-- Connection: Voting → Config -->
+      <div class="conn" style="grid-area:v2c;">
+        <div class="conn-line h" style="background:linear-gradient(to right,#6c5ce7,rgba(108,92,231,0.2));"></div>
+        <div class="conn-dot" style="background:#6c5ce7; top:calc(50% - 3px); right:20%; animation-delay:1.8s;"></div>
+        <span class="conn-label" style="background:rgba(108,92,231,0.1); color:#a78bfa; border:1px solid rgba(108,92,231,0.2);">execute &rarr;</span>
+      </div>
+
+      <!-- Row 6: Config -->
+      <div class="n config" style="grid-area:config;">
+        <div class="n-title">Configuration</div>
+        <div class="n-sub">Fees, budgets, limits, withdrawal windows, yield threshold, payee whitelist</div>
+        <div class="n-actions">
+          <span class="tag info">enforces rules on Pool</span>
+        </div>
+      </div>
+
+      <!-- Row 5-6: Oracles -->
+      <div class="n oracles" style="grid-area:oracles;">
+        <div class="n-title">Oracles</div>
+        <div class="n-sub">Chainlink + Stork on-chain aggregator &mdash; price feeds for asset valuation</div>
+        <div class="n-actions">
+          <span class="tag info">price feeds</span>
+          <span class="tag info">NAV calculation</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="arch-legend">
+    <div class="arch-legend-item"><div class="ln" style="background:#55efc4;"></div> allowed action</div>
+    <div class="arch-legend-item"><div class="ln" style="background:#ff6b6b;"></div> emergency override</div>
+    <div class="arch-legend-item"><div class="ln" style="background:#fdcb6e;"></div> yield flow (USYC)</div>
+    <div class="arch-legend-item"><div class="ln" style="background:#6c5ce7;"></div> governance / deposit</div>
+    <div class="arch-legend-item"><div class="ln" style="background:rgba(255,255,255,0.15);"></div> infrastructure</div>
+  </div>
+</section>
+
+<footer>
+  OTTO &mdash; Autonomous AI Treasury Agent &middot; <a href="https://github.com/vlprosvirkin/OTTO">GitHub</a>
+</footer>
+
+</body>
+</html>
