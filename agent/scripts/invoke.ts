@@ -138,6 +138,14 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleRebalanceCheck } = await import(`${MCP}/vault.js`);
     return handleRebalanceCheck(a as { min_usdc?: number });
   },
+  deploy_user_vault: async (a) => {
+    const { handleDeployUserVault } = await import(`${MCP}/vault.js`);
+    return handleDeployUserVault(a as { user_id: string; chain?: string; max_per_tx_usdc?: number; daily_limit_usdc?: number });
+  },
+  get_user_vault: async (a) => {
+    const { handleGetUserVault } = await import(`${MCP}/vault.js`);
+    return handleGetUserVault(a as { user_id: string; chain?: string });
+  },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────
   x402_fetch: async (a) => {

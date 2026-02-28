@@ -54,6 +54,8 @@ import {
   handleVaultCanTransfer,
   handleVaultDeposit,
   handleRebalanceCheck,
+  handleDeployUserVault,
+  handleGetUserVault,
 } from "./tools/vault.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
@@ -451,6 +453,56 @@ server.registerTool(
     content: [{
       type: "text" as const,
       text: await handleRebalanceCheck({ min_usdc }),
+    }],
+  })
+);
+
+server.registerTool(
+  "deploy_user_vault",
+  {
+    title: "Deploy a personal OTTOVault for a user",
+    description:
+      "Deploy a new OTTOVault smart contract on testnet linked to a Telegram user_id. " +
+      "The vault enforces per-tx and daily spending limits at the EVM level. " +
+      "Deployment is idempotent — calling again returns the existing address. " +
+      "The agent wallet becomes both admin and agent of the vault. " +
+      "Default: 10 USDC/tx cap, 100 USDC/day limit.",
+    inputSchema: {
+      user_id: z.string().describe("Telegram user ID (numeric string, e.g. '97729005')"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Chain to deploy on (default: arcTestnet)"),
+      max_per_tx_usdc: z.number().positive().optional()
+        .describe("Max USDC per single transfer (default: 10)"),
+      daily_limit_usdc: z.number().positive().optional()
+        .describe("Max USDC per day (default: 100)"),
+    },
+  },
+  async ({ user_id, chain, max_per_tx_usdc, daily_limit_usdc }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleDeployUserVault({ user_id, chain, max_per_tx_usdc, daily_limit_usdc }),
+    }],
+  })
+);
+
+server.registerTool(
+  "get_user_vault",
+  {
+    title: "Get vault address(es) for a user",
+    description:
+      "Look up the deployed OTTOVault address(es) for a Telegram user_id. " +
+      "Returns vault addresses per chain (null if not deployed). " +
+      "If chain is specified, returns only that chain's vault.",
+    inputSchema: {
+      user_id: z.string().describe("Telegram user ID (numeric string)"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Specific chain to look up (optional — omit for all chains)"),
+    },
+  },
+  async ({ user_id, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleGetUserVault({ user_id, chain }),
     }],
   })
 );

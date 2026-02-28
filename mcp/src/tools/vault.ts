@@ -21,6 +21,9 @@ import {
   type Chain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { join } from "path";
+import { OTTO_VAULT_BYTECODE } from "./vault-bytecode.js";
 import { baseSepolia, avalancheFuji } from "viem/chains";
 import { arcTestnet } from "../lib/circle/gateway-sdk.js";
 
@@ -444,5 +447,157 @@ export async function handleRebalanceCheck(params: RebalanceCheckParams): Promis
         ? "All vaults healthy — no rebalancing needed."
         : `Fund ${needFunding.map((r) => r.chain).join(", ")} with at least ${needFunding.map((r) => `${r.shortfall_usdc.toFixed(2)} USDC on ${r.chain}`).join("; ")}.`,
     },
+  }, null, 2);
+}
+
+// ─── User Vault Registry ────────────────────────────────────────────────────
+
+const USER_VAULTS_PATH = join(
+  process.env.HOME ?? "/tmp",
+  ".otto",
+  "user-vaults.json"
+);
+
+type UserVaultRegistry = Record<string, Partial<Record<SupportedChain, string>>>;
+
+function loadUserVaults(): UserVaultRegistry {
+  if (!existsSync(USER_VAULTS_PATH)) return {};
+  try {
+    return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveUserVaults(registry: UserVaultRegistry): void {
+  const dir = join(process.env.HOME ?? "/tmp", ".otto");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(USER_VAULTS_PATH, JSON.stringify(registry, null, 2));
+}
+
+const VAULT_CONSTRUCTOR_ABI = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "_usdc", type: "address" },
+      { name: "_agent", type: "address" },
+      { name: "_maxPerTx", type: "uint256" },
+      { name: "_dailyLimit", type: "uint256" },
+      { name: "_whitelistEnabled", type: "bool" },
+    ],
+  },
+] as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DeployUserVaultParams {
+  user_id: string;
+  chain?: string;
+  max_per_tx_usdc?: number;
+  daily_limit_usdc?: number;
+}
+
+/**
+ * Deploy a personal OTTOVault on testnet for a given user (identified by Telegram user_id).
+ * The agent wallet is both deployer (admin) and operator.
+ * Default limits: 10 USDC/tx, 100 USDC/day.
+ */
+export async function handleDeployUserVault(params: DeployUserVaultParams): Promise<string> {
+  const { user_id } = params;
+  const chain = resolveChain(params.chain);
+  const maxPerTxUsdc = params.max_per_tx_usdc ?? 10;
+  const dailyLimitUsdc = params.daily_limit_usdc ?? 100;
+
+  if (!user_id) throw new Error("user_id is required");
+
+  const registry = loadUserVaults();
+  if (registry[user_id]?.[chain]) {
+    return JSON.stringify({
+      already_exists: true,
+      vault: registry[user_id][chain],
+      chain,
+      user_id,
+      message: `Vault already deployed for user ${user_id} on ${chain}`,
+    });
+  }
+
+  const { client, account } = getAgentWalletClient(chain);
+  const publicClient = getPublicClient(chain);
+  const usdcAddr = USDC_ADDRESS[chain];
+  const maxPerTxAtomic = BigInt(Math.round(maxPerTxUsdc * 1_000_000));
+  const dailyLimitAtomic = BigInt(Math.round(dailyLimitUsdc * 1_000_000));
+
+  const txHash = await client.deployContract({
+    abi: VAULT_CONSTRUCTOR_ABI,
+    bytecode: OTTO_VAULT_BYTECODE,
+    args: [usdcAddr, account.address, maxPerTxAtomic, dailyLimitAtomic, false],
+    account,
+    gas: 2_000_000n, // explicit gas to avoid estimation issues on Arc Testnet
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
+  const vaultAddr = receipt.contractAddress;
+
+  if (!vaultAddr || receipt.status !== "success") {
+    return JSON.stringify({ success: false, txHash, reason: "Deployment failed or no contract address" });
+  }
+
+  // Persist mapping
+  if (!registry[user_id]) registry[user_id] = {};
+  registry[user_id][chain] = vaultAddr;
+  saveUserVaults(registry);
+
+  return JSON.stringify({
+    success: true,
+    vault: vaultAddr,
+    chain,
+    chainName: CHAIN_NAMES[chain],
+    user_id,
+    txHash,
+    max_per_tx_usdc: maxPerTxUsdc,
+    daily_limit_usdc: dailyLimitUsdc,
+    explorerUrl: `${EXPLORER_TX[chain]}/${txHash}`,
+  }, null, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GetUserVaultParams {
+  user_id: string;
+  chain?: string;
+}
+
+/**
+ * Look up a user's vault address(es) from the registry.
+ * If chain is omitted, returns all vaults for the user.
+ */
+export async function handleGetUserVault(params: GetUserVaultParams): Promise<string> {
+  const { user_id } = params;
+  if (!user_id) throw new Error("user_id is required");
+
+  const registry = loadUserVaults();
+  const userVaults = registry[user_id] ?? {};
+
+  if (params.chain) {
+    const chain = resolveChain(params.chain);
+    const vaultAddr = userVaults[chain];
+    return JSON.stringify({
+      user_id,
+      chain,
+      vault: vaultAddr ?? null,
+      exists: !!vaultAddr,
+    });
+  }
+
+  const vaults = (Object.keys(CHAINS) as SupportedChain[]).map((chain) => ({
+    chain,
+    chainName: CHAIN_NAMES[chain],
+    vault: userVaults[chain] ?? null,
+  }));
+
+  return JSON.stringify({
+    user_id,
+    vaults,
+    total_deployed: vaults.filter((v) => v.vault).length,
   }, null, 2);
 }
