@@ -377,6 +377,32 @@ Tools: `encode_admin_tx`
 
 ---
 
+### 4e+. Whitelist Check — Read whitelist status
+**Triggers**: "проверь whitelist", "whitelisted?", "check whitelist", "в whitelist ли 0x..."
+
+Read-only check — no admin key needed.
+
+Step 1 — run `vault_check_whitelist`:
+```
+→ checking whitelist...
+```
+
+Step 2 — show result:
+```
+Адрес: 0xAbC...
+Whitelist: включён
+Статус: ✅ ALLOWED (адрес в whitelist)
+```
+
+Possible `effective` values:
+- `ALLOWED` — whitelisted + whitelist enabled
+- `BLOCKED` — not whitelisted + whitelist enabled
+- `ALLOWED (whitelist disabled)` — whitelist enforcement off
+
+Tools: `vault_check_whitelist`
+
+---
+
 ### 4f. Invoice — Compliance for incoming payments
 **Triggers**: "создай счёт", "create invoice", "выставь инвойс", "жду платёж"
 
@@ -429,45 +455,40 @@ Tools: `rebalance_check` → `vault_deposit` (per chain) → `rebalance_check` (
 
 ---
 
-### 5. Payroll — Batch transfers
-**Triggers**: "выплати", "pay", list of addresses with amounts
+### 5. Payroll — Batch vault transfers
+**Triggers**: "выплати", "pay", "payroll", list of addresses with amounts
 
-Confirmation:
+Uses `vault_payroll` — all transfers go through OTTOVault with enforced limits.
+
+Step 1 — show confirmation:
 ```
-Подтвердить выплаты?
+Подтвердить выплаты из хранилища?
 • 0xAbc...  →  10 USDC
 • 0xDef...  →   5 USDC
 Итого: 15 USDC
-Источник: Arc Testnet (баланс: 25 USDC) ✓
+Хранилище: 0xFFfe... (Arc Testnet)
+Баланс: 150 USDC ✓
+Дневной остаток: 90 USDC ✓
+Лимит/tx: 10 USDC ✓
+Ответь "да" / "yes"
 ```
 
-After confirmation, run `transfer_usdc_eoa` per recipient:
+Step 2 — after confirmation, run `vault_payroll`:
 ```
+✅ Выплаты завершены (2/2)
 ✅ 0xAbc... → 10 USDC (tx: 0x...)
 ✅ 0xDef... →  5 USDC (tx: 0x...)
-Выплачено: 15 USDC. Остаток: 10 USDC
+Выплачено: 15 USDC
 ```
 
----
-
-### 5. Rebalancer
-**Triggers**: "следи чтобы на [chain] было минимум X USDC", "keep [chain] above X", "rebalance"
-
-Activate:
+If partial failure:
 ```
-✅ Rebalancer activated
-Threshold: Arc Testnet ≥ 10 USDC
-Checking every 5 min. I'll notify you on action.
+⚠️ 1/2 выплат выполнено
+✅ 0xAbc... → 10 USDC (tx: 0x...)
+❌ 0xDef... → 5 USDC — Recipient not whitelisted
 ```
 
-When breached:
-```
-⚠️ Arc Testnet balance: 2 USDC (below threshold)
-→ Moving 10 USDC from Base Sepolia...
-✅ Rebalanced. Arc Testnet: 12 USDC
-```
-
-Tools: `get_usdc_balance` to poll, `transfer_usdc_custodial` to rebalance.
+Tools: `vault_payroll` (single call for entire batch)
 
 ---
 
@@ -536,6 +557,9 @@ bash {skills}/arc-vault/scripts/user_vault_get.sh <user_id> [chain]
 bash {skills}/arc-vault/scripts/user_register_address.sh <user_id> <eth_address>
 bash {skills}/arc-vault/scripts/transfer_vault_admin.sh <user_id> [chain] [vault_address]
 bash {skills}/arc-vault/scripts/create_invoice.sh <amount_usdc> [user_id] [chain] [expected_sender]
+bash {skills}/arc-vault/scripts/vault_check_whitelist.sh <address> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address]
+bash {skills}/arc-vault/scripts/check_pending_invoices.sh
 ```
 
 Deployed on all 3 chains. Default limits: 10 USDC/tx · 100 USDC/day

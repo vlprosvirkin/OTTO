@@ -38,3 +38,18 @@ If `paused = true` → report to Telegram:
 "⚠️ Treasury vault is paused on arcTestnet. Admin action required to unpause."
 
 Otherwise → skip.
+
+## 4. Pending Invoice Check
+
+```bash
+bash {skills}/arc-vault/scripts/check_pending_invoices.sh
+```
+
+For each pending invoice in the results:
+- If `status` changed to `"paid"` → report to Telegram:
+  "✅ Invoice <invoice_id> paid — <amount> USDC received on <chain>."
+- If `status` changed to `"expired"` → report to Telegram:
+  "⏰ Invoice <invoice_id> expired — expected <amount> USDC, not received."
+- If still `"pending"` → skip.
+
+If no pending invoices → skip.

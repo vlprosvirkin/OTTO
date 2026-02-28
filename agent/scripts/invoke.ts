@@ -170,6 +170,14 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleCheckInvoiceStatus } = await import(`${MCP}/vault.js`);
     return handleCheckInvoiceStatus(a as { invoice_id: string });
   },
+  vault_check_whitelist: async (a) => {
+    const { handleVaultCheckWhitelist } = await import(`${MCP}/vault.js`);
+    return handleVaultCheckWhitelist(a as { address: string; chain?: string; vault_address?: string });
+  },
+  vault_payroll: async (a) => {
+    const { handleVaultPayroll } = await import(`${MCP}/vault.js`);
+    return handleVaultPayroll(a as { recipients: Array<{ address: string; amount_usdc: number }>; chain?: string; vault_address?: string });
+  },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────
   x402_fetch: async (a) => {

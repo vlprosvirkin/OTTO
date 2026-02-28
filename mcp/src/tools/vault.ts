@@ -113,6 +113,20 @@ const VAULT_ABI = [
       { name: "reason", type: "string" },
     ],
   },
+  {
+    name: "whitelist",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "addr", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "whitelistEnabled",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+  },
 ] as const;
 
 // Admin-only functions (for encode_admin_tx and transferAdmin after deployment)
@@ -1144,5 +1158,194 @@ export async function handleCheckInvoiceStatus(params: CheckInvoiceStatusParams)
     message: invoice.status === "paid"
       ? `Invoice paid ✓ Balance increased by ${increase.toFixed(6)} USDC`
       : `Pending — waiting for ${invoice.expected_amount_usdc} USDC (current increase: ${Math.max(0, increase).toFixed(6)} USDC)`,
+  }, null, 2);
+}
+
+// ─── Whitelist check (read-only) ──────────────────────────────────────────────
+
+export interface VaultCheckWhitelistParams {
+  address: string;
+  chain?: string;
+  vault_address?: string;
+}
+
+/**
+ * Check whether an address is whitelisted on an OTTOVault.
+ * Read-only — no transaction sent.
+ */
+export async function handleVaultCheckWhitelist(params: VaultCheckWhitelistParams): Promise<string> {
+  const { address } = params;
+  if (!address) throw new Error("address is required");
+  if (!isAddress(address)) throw new Error(`Invalid address: ${address}`);
+
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
+  const client = getPublicClient(chain);
+
+  const [whitelisted, whitelistEnabled] = await Promise.all([
+    client.readContract({
+      address: vaultAddr,
+      abi: VAULT_ABI,
+      functionName: "whitelist",
+      args: [address as Address],
+    }) as Promise<boolean>,
+    client.readContract({
+      address: vaultAddr,
+      abi: VAULT_ABI,
+      functionName: "whitelistEnabled",
+    }) as Promise<boolean>,
+  ]);
+
+  let effective: string;
+  if (!whitelistEnabled) {
+    effective = "ALLOWED (whitelist disabled)";
+  } else if (whitelisted) {
+    effective = "ALLOWED";
+  } else {
+    effective = "BLOCKED";
+  }
+
+  return JSON.stringify({
+    address: getAddress(address),
+    whitelisted,
+    whitelist_enabled: whitelistEnabled,
+    effective,
+    chain,
+    vault: vaultAddr,
+  }, null, 2);
+}
+
+// ─── Payroll (batch vault transfer) ───────────────────────────────────────────
+
+export interface VaultPayrollRecipient {
+  address: string;
+  amount_usdc: number;
+}
+
+export interface VaultPayrollParams {
+  recipients: VaultPayrollRecipient[];
+  chain?: string;
+  vault_address?: string;
+}
+
+/**
+ * Batch transfer USDC from an OTTOVault to multiple recipients (payroll).
+ * Pre-flight checks verify vault state before any transfer. Partial failure tolerant.
+ */
+export async function handleVaultPayroll(params: VaultPayrollParams): Promise<string> {
+  const { recipients } = params;
+  if (!recipients || recipients.length === 0) throw new Error("recipients array is required and must not be empty");
+
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
+  const publicClient = getPublicClient(chain);
+
+  // Validate all recipients
+  for (const r of recipients) {
+    if (!r.address || !isAddress(r.address)) throw new Error(`Invalid address: ${r.address}`);
+    if (!r.amount_usdc || r.amount_usdc <= 0) throw new Error(`Invalid amount for ${r.address}: ${r.amount_usdc}`);
+  }
+
+  const totalUsdc = recipients.reduce((s, r) => s + r.amount_usdc, 0);
+
+  // Pre-flight: read vault status once
+  const statusResult = (await publicClient.readContract({
+    address: vaultAddr,
+    abi: VAULT_ABI,
+    functionName: "status",
+  })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+
+  const [balance, maxPerTx, , , remainingToday, , paused] = statusResult;
+  const balanceUsdc = Number(balance) / 1_000_000;
+  const maxPerTxUsdc = Number(maxPerTx) / 1_000_000;
+  const remainingTodayUsdc = Number(remainingToday) / 1_000_000;
+
+  // Pre-flight checks
+  if (paused) {
+    return JSON.stringify({ success: false, reason: "Vault is paused", chain, vault: vaultAddr });
+  }
+  if (totalUsdc > balanceUsdc) {
+    return JSON.stringify({
+      success: false,
+      reason: `Total payroll (${totalUsdc} USDC) exceeds vault balance (${balanceUsdc} USDC)`,
+      total_usdc: totalUsdc,
+      vault_balance_usdc: balanceUsdc,
+      chain,
+      vault: vaultAddr,
+    });
+  }
+  if (totalUsdc > remainingTodayUsdc) {
+    return JSON.stringify({
+      success: false,
+      reason: `Total payroll (${totalUsdc} USDC) exceeds remaining daily allowance (${remainingTodayUsdc} USDC)`,
+      total_usdc: totalUsdc,
+      remaining_daily_usdc: remainingTodayUsdc,
+      chain,
+      vault: vaultAddr,
+    });
+  }
+  for (const r of recipients) {
+    if (r.amount_usdc > maxPerTxUsdc) {
+      return JSON.stringify({
+        success: false,
+        reason: `Recipient ${r.address}: ${r.amount_usdc} USDC exceeds per-tx cap (${maxPerTxUsdc} USDC)`,
+        chain,
+        vault: vaultAddr,
+      });
+    }
+  }
+
+  // Execute transfers sequentially
+  const { client, account } = getAgentWalletClient(chain);
+  const results: Array<{
+    address: string;
+    amount_usdc: number;
+    success: boolean;
+    txHash?: string;
+    error?: string;
+  }> = [];
+
+  for (const r of recipients) {
+    const amountAtomic = BigInt(Math.round(r.amount_usdc * 1_000_000));
+    try {
+      const txHash = await client.writeContract({
+        address: vaultAddr,
+        abi: VAULT_ABI,
+        functionName: "transfer",
+        args: [r.address as Address, amountAtomic],
+        account,
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+      results.push({
+        address: r.address,
+        amount_usdc: r.amount_usdc,
+        success: receipt.status === "success",
+        txHash,
+      });
+    } catch (err: unknown) {
+      results.push({
+        address: r.address,
+        amount_usdc: r.amount_usdc,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const succeeded = results.filter((r) => r.success);
+  const failed = results.filter((r) => !r.success);
+
+  return JSON.stringify({
+    success: failed.length === 0,
+    chain,
+    vault: vaultAddr,
+    total_usdc: totalUsdc,
+    recipients_count: recipients.length,
+    succeeded_count: succeeded.length,
+    failed_count: failed.length,
+    results,
+    summary: failed.length === 0
+      ? `All ${recipients.length} payments completed successfully (${totalUsdc} USDC total)`
+      : `${succeeded.length}/${recipients.length} payments succeeded, ${failed.length} failed`,
   }, null, 2);
 }

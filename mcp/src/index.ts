@@ -62,6 +62,8 @@ import {
   handleEncodeAdminTx,
   handleCreateInvoice,
   handleCheckInvoiceStatus,
+  handleVaultCheckWhitelist,
+  handleVaultPayroll,
 } from "./tools/vault.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
@@ -632,6 +634,52 @@ server.registerTool(
   },
   async ({ invoice_id }) => ({
     content: [{ type: "text" as const, text: await handleCheckInvoiceStatus({ invoice_id }) }],
+  })
+);
+
+server.registerTool(
+  "vault_check_whitelist",
+  {
+    title: "Check if address is whitelisted on vault",
+    description:
+      "Check whether a specific address is on the OTTOVault recipient whitelist. " +
+      "Read-only — no transaction sent. Returns whitelist status and effective permission " +
+      "(ALLOWED, BLOCKED, or ALLOWED with whitelist disabled).",
+    inputSchema: {
+      address: z.string().describe("EVM address to check (0x-prefixed)"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Chain (default: arcTestnet)"),
+      vault_address: z.string().optional()
+        .describe("OTTOVault contract address (overrides per-chain default)"),
+    },
+  },
+  async ({ address, chain, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleVaultCheckWhitelist({ address, chain, vault_address }) }],
+  })
+);
+
+server.registerTool(
+  "vault_payroll",
+  {
+    title: "Batch transfer USDC from vault (payroll)",
+    description:
+      "Transfer USDC from an OTTOVault to multiple recipients in one batch. " +
+      "Pre-flight checks validate: vault not paused, total ≤ balance, total ≤ daily allowance, " +
+      "each amount ≤ per-tx cap. Partial failure tolerant — continues after individual failures. " +
+      "Returns per-recipient results and summary. Uses vault limits (not Circle wallet).",
+    inputSchema: {
+      recipients: z.array(z.object({
+        address: z.string().describe("Recipient EVM address"),
+        amount_usdc: z.number().positive().describe("Amount in USDC"),
+      })).min(1).describe("Array of {address, amount_usdc} recipients"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Chain (default: arcTestnet)"),
+      vault_address: z.string().optional()
+        .describe("OTTOVault contract address (overrides per-chain default)"),
+    },
+  },
+  async ({ recipients, chain, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleVaultPayroll({ recipients, chain, vault_address }) }],
   })
 );
 

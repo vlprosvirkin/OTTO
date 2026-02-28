@@ -50,6 +50,8 @@ import {
   handleTransferVaultAdmin,
   handleCreateInvoice,
   handleCheckInvoiceStatus,
+  handleVaultCheckWhitelist,
+  handleVaultPayroll,
 } from "./vault.js";
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -604,5 +606,260 @@ describe("handleCheckInvoiceStatus", () => {
     await expect(
       handleCheckInvoiceStatus({ invoice_id: "" })
     ).rejects.toThrow("invoice_id is required");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// handleVaultCheckWhitelist
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("handleVaultCheckWhitelist", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupFiles();
+  });
+
+  it("returns ALLOWED when whitelisted=true and whitelist enabled", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn()
+        .mockResolvedValueOnce(true)   // whitelist(address) → true
+        .mockResolvedValueOnce(true),  // whitelistEnabled() → true
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultCheckWhitelist({ address: USER_ETH_ADDR })
+    );
+
+    expect(result.whitelisted).toBe(true);
+    expect(result.whitelist_enabled).toBe(true);
+    expect(result.effective).toBe("ALLOWED");
+  });
+
+  it("returns BLOCKED when whitelisted=false and whitelist enabled", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn()
+        .mockResolvedValueOnce(false)  // whitelist(address) → false
+        .mockResolvedValueOnce(true),  // whitelistEnabled() → true
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultCheckWhitelist({ address: USER_ETH_ADDR })
+    );
+
+    expect(result.whitelisted).toBe(false);
+    expect(result.whitelist_enabled).toBe(true);
+    expect(result.effective).toBe("BLOCKED");
+  });
+
+  it("returns ALLOWED (whitelist disabled) when whitelist is off", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn()
+        .mockResolvedValueOnce(false)   // whitelist(address) → false
+        .mockResolvedValueOnce(false),  // whitelistEnabled() → false
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultCheckWhitelist({ address: USER_ETH_ADDR })
+    );
+
+    expect(result.whitelisted).toBe(false);
+    expect(result.whitelist_enabled).toBe(false);
+    expect(result.effective).toBe("ALLOWED (whitelist disabled)");
+  });
+
+  it("throws on invalid address", async () => {
+    await expect(
+      handleVaultCheckWhitelist({ address: "not-an-address" })
+    ).rejects.toThrow("Invalid address");
+  });
+
+  it("throws on empty address", async () => {
+    await expect(
+      handleVaultCheckWhitelist({ address: "" })
+    ).rejects.toThrow("address is required");
+  });
+
+  it("respects chain parameter", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn()
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultCheckWhitelist({ address: USER_ETH_ADDR, chain: "baseSepolia" })
+    );
+
+    expect(result.chain).toBe("baseSepolia");
+    expect(result.effective).toBe("ALLOWED (whitelist disabled)");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// handleVaultPayroll
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("handleVaultPayroll", () => {
+  const RECIP_A = "0x1111111111111111111111111111111111111111";
+  const RECIP_B = "0x2222222222222222222222222222222222222222";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupFiles();
+    process.env.X402_PAYER_PRIVATE_KEY =
+      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+  });
+
+  it("succeeds for 2 recipients", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(makeStatusTuple(50_000_000n)), // 50 USDC
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success" }),
+    } as never);
+
+    mockCreateWalletClient.mockReturnValue({
+      writeContract: vi.fn()
+        .mockResolvedValueOnce("0xtxhash1")
+        .mockResolvedValueOnce("0xtxhash2"),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [
+          { address: RECIP_A, amount_usdc: 5 },
+          { address: RECIP_B, amount_usdc: 3 },
+        ],
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.succeeded_count).toBe(2);
+    expect(result.failed_count).toBe(0);
+    expect(result.results[0].txHash).toBe("0xtxhash1");
+    expect(result.results[1].txHash).toBe("0xtxhash2");
+  });
+
+  it("fails pre-flight when vault is paused", async () => {
+    const pausedStatus = [
+      50_000_000n,  // balance
+      10_000_000n,  // maxPerTx
+      100_000_000n, // dailyLimit
+      0n,           // dailySpent
+      100_000_000n, // remainingToday
+      false,        // whitelistEnabled
+      true,         // paused = TRUE
+      AGENT_ADDR,   // agent
+      AGENT_ADDR,   // admin
+    ] as const;
+
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(pausedStatus),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [{ address: RECIP_A, amount_usdc: 5 }],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toContain("paused");
+  });
+
+  it("fails pre-flight when total exceeds vault balance", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(makeStatusTuple(5_000_000n)), // 5 USDC
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [
+          { address: RECIP_A, amount_usdc: 3 },
+          { address: RECIP_B, amount_usdc: 4 },
+        ],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toContain("exceeds vault balance");
+  });
+
+  it("fails pre-flight when total exceeds daily allowance", async () => {
+    // balance=200, but remainingToday=5
+    const lowAllowance = [
+      200_000_000n, // balance
+      10_000_000n,  // maxPerTx
+      100_000_000n, // dailyLimit
+      95_000_000n,  // dailySpent (95 spent)
+      5_000_000n,   // remainingToday (only 5 left)
+      false, false, AGENT_ADDR, AGENT_ADDR,
+    ] as const;
+
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(lowAllowance),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [
+          { address: RECIP_A, amount_usdc: 3 },
+          { address: RECIP_B, amount_usdc: 4 },
+        ],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toContain("daily allowance");
+  });
+
+  it("fails pre-flight when single recipient exceeds per-tx cap", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(makeStatusTuple(200_000_000n)),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [{ address: RECIP_A, amount_usdc: 15 }], // cap is 10
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toContain("per-tx cap");
+  });
+
+  it("handles partial failure mid-batch (1 success, 1 fail)", async () => {
+    mockCreatePublicClient.mockReturnValue({
+      readContract: vi.fn().mockResolvedValue(makeStatusTuple(50_000_000n)),
+      waitForTransactionReceipt: vi.fn()
+        .mockResolvedValueOnce({ status: "success" })
+        .mockResolvedValueOnce({ status: "success" }),
+    } as never);
+
+    mockCreateWalletClient.mockReturnValue({
+      writeContract: vi.fn()
+        .mockResolvedValueOnce("0xtxhash1")
+        .mockRejectedValueOnce(new Error("Recipient not whitelisted")),
+    } as never);
+
+    const result = JSON.parse(
+      await handleVaultPayroll({
+        recipients: [
+          { address: RECIP_A, amount_usdc: 5 },
+          { address: RECIP_B, amount_usdc: 3 },
+        ],
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.succeeded_count).toBe(1);
+    expect(result.failed_count).toBe(1);
+    expect(result.results[0].success).toBe(true);
+    expect(result.results[1].success).toBe(false);
+    expect(result.results[1].error).toContain("whitelisted");
+  });
+
+  it("throws on empty recipients array", async () => {
+    await expect(
+      handleVaultPayroll({ recipients: [] })
+    ).rejects.toThrow("recipients array is required and must not be empty");
   });
 });
