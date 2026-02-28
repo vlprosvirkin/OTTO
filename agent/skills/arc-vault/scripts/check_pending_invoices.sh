@@ -2,8 +2,8 @@
 # Check all pending invoices and report status changes.
 # Reads ~/.otto/invoices.json, calls check_invoice_status per pending invoice.
 set -euo pipefail
-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+ROOT="$(cd "$SKILL_DIR/../.." && pwd -P)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
 TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../mcp/node_modules/.bin/tsx")"
 

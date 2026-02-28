@@ -2,8 +2,8 @@
 # Look up a user's vault address(es).
 # Usage: user_vault_get.sh <user_id> [chain]
 set -euo pipefail
-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+ROOT="$(cd "$SKILL_DIR/../.." && pwd -P)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
 TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../mcp/node_modules/.bin/tsx")"
 

@@ -3,8 +3,8 @@
 # Requires: user must have registered their ETH address via user_register_address.sh first.
 # Usage: transfer_vault_admin.sh <user_id> [chain] [vault_address]
 set -euo pipefail
-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+ROOT="$(cd "$SKILL_DIR/../.." && pwd -P)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
 TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../mcp/node_modules/.bin/tsx")"
 
