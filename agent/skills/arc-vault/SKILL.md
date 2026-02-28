@@ -102,6 +102,21 @@ bash {skills}/arc-vault/scripts/encode_admin_tx.sh setPaused --paused true --cha
 bash {skills}/arc-vault/scripts/encode_admin_tx.sh setWhitelist --address 0xAbc... --allowed true
 ```
 
+### Whitelist
+
+```bash
+# Check if an address is whitelisted (read-only, no tx)
+bash {skills}/arc-vault/scripts/vault_check_whitelist.sh <address> [chain] [vault_address]
+```
+
+### Payroll
+
+```bash
+# Batch transfer USDC to multiple recipients (pre-flight limit checks)
+bash {skills}/arc-vault/scripts/vault_payroll.sh '<recipients_json>' [chain] [vault_address]
+# recipients_json example: [{"address":"0x...","amount_usdc":10},{"address":"0x...","amount_usdc":25}]
+```
+
 ### Invoice / compliance
 
 ```bash
@@ -110,4 +125,7 @@ bash {skills}/arc-vault/scripts/create_invoice.sh <amount_usdc> [user_id] [chain
 
 # Check if invoice has been paid (pending / paid / expired)
 bash {skills}/arc-vault/scripts/check_invoice_status.sh <invoice_id>
+
+# Check all pending invoices (used by heartbeat)
+bash {skills}/arc-vault/scripts/check_pending_invoices.sh
 ```
