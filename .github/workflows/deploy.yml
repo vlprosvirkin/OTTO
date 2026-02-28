@@ -79,7 +79,7 @@ jobs:
             echo "  Gateway PID: $!"
 
             echo "→ restart demo-server"
-            pkill -f "demo-server/server" 2>/dev/null && sleep 1 || true
+            fuser -k 4402/tcp 2>/dev/null && sleep 1 || true
             cd "$OTTO/demo-server"
             nohup npx tsx server.ts >> "$HOME/otto-demo.log" 2>&1 &
             echo "  Demo-server PID: $!"
