@@ -65,6 +65,16 @@ import {
   handleVaultCheckWhitelist,
   handleVaultPayroll,
 } from "./tools/vault.js";
+import {
+  handleStorkPrice,
+  handleStorkOnChainPrice,
+} from "./tools/stork.js";
+import {
+  handleUsycRate,
+  handleUsycBalance,
+  handleUsycDeposit,
+  handleUsycRedeem,
+} from "./tools/usyc.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
 
@@ -680,6 +690,134 @@ server.registerTool(
   },
   async ({ recipients, chain, vault_address }) => ({
     content: [{ type: "text" as const, text: await handleVaultPayroll({ recipients, chain, vault_address }) }],
+  })
+);
+
+// ─── Stork Oracle Tools ───────────────────────────────────────────────────────
+
+server.tool(
+  "stork_price_feed",
+  [
+    "Fetch real-time price data from Stork Oracle REST API.",
+    "Returns latest price for the specified asset (default: ETHUSD).",
+    "Requires STORK_API_KEY env var — falls back to mock data if not set.",
+    "Use this for market data, portfolio valuation, and trading decisions.",
+  ].join(" "),
+  {
+    assets: z.string().optional()
+      .describe("Asset pair to query (default: ETHUSD). Comma-separated for multiple."),
+  },
+  async ({ assets }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleStorkPrice({ assets }),
+    }],
+  })
+);
+
+server.tool(
+  "stork_onchain_price",
+  [
+    "Read price from Stork on-chain aggregator contract.",
+    "Returns the latest on-chain price for the specified asset.",
+    "Available on Arc Testnet where Stork aggregator is deployed.",
+    "Use this for trustless on-chain price verification.",
+  ].join(" "),
+  {
+    asset: z.string().optional()
+      .describe("Asset name (default: ETHUSD)"),
+    chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+      .describe("Chain (default: arcTestnet — where Stork is deployed)"),
+  },
+  async ({ asset, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleStorkOnChainPrice({ asset, chain }),
+    }],
+  })
+);
+
+// ─── USYC Yield Tools ────────────────────────────────────────────────────────
+
+server.tool(
+  "usyc_rate",
+  [
+    "Fetch the current USYC (Hashnote tokenized T-bills) exchange rate.",
+    "Returns the price per USYC token and estimated APY.",
+    "Use this before usyc_deposit to show the user current yield rates.",
+  ].join(" "),
+  {},
+  async () => ({
+    content: [{
+      type: "text" as const,
+      text: await handleUsycRate(),
+    }],
+  })
+);
+
+server.tool(
+  "usyc_balance",
+  [
+    "Get USYC token balance for an address on Arc Testnet.",
+    "Also fetches current rate to show estimated USD value.",
+    "If no address is provided, checks the agent's own wallet.",
+  ].join(" "),
+  {
+    address: z.string().optional()
+      .describe("EVM address to check (default: agent wallet)"),
+    chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+      .describe("Chain (default: arcTestnet — where USYC is deployed)"),
+  },
+  async ({ address, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleUsycBalance({ address, chain }),
+    }],
+  })
+);
+
+server.tool(
+  "usyc_deposit",
+  [
+    "Invest idle USDC into USYC (Hashnote tokenized US T-bills).",
+    "Approves USDC spend then calls buy() to convert USDC → USYC.",
+    "USYC earns yield from short-term US Treasury bills.",
+    "Only available on Arc Testnet. Requires agent wallet to hold USDC.",
+    "Check usyc_rate first to show current yield, then confirm with user.",
+  ].join(" "),
+  {
+    amount_usdc: z.number().positive()
+      .describe("Amount of USDC to invest into USYC"),
+    chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+      .describe("Chain (default: arcTestnet)"),
+  },
+  async ({ amount_usdc, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleUsycDeposit({ amount_usdc, chain }),
+    }],
+  })
+);
+
+server.tool(
+  "usyc_redeem",
+  [
+    "Redeem USYC back to USDC (sell tokenized T-bills).",
+    "Converts USYC → USDC at the current exchange rate.",
+    "Only available on Arc Testnet.",
+    "Check usyc_balance first to see available USYC holdings.",
+  ].join(" "),
+  {
+    amount_usyc: z.number().positive()
+      .describe("Amount of USYC to redeem to USDC"),
+    chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+      .describe("Chain (default: arcTestnet)"),
+  },
+  async ({ amount_usyc, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleUsycRedeem({ amount_usyc, chain }),
+    }],
   })
 );
 

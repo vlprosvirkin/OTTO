@@ -132,6 +132,13 @@ OTTO — автономный казначей на Arc.
 ⚡ x402 — автооплата данных
   цена ETH / статистика Arc — агент платит 0.001 USDC и возвращает данные
 
+📈 Stork Oracle — реальные цены
+  цена ETH (Stork) — данные из Stork Oracle (REST или on-chain)
+
+📊 USYC — доходность
+  вложить USDC в USYC — инвестировать в токенизированные T-bills
+  обменять USYC на USDC — выкупить обратно
+
 💸 Выплаты
   список адресов + суммы → батч-перевод
 
@@ -182,6 +189,67 @@ Paid: 0.001 USDC · tx: 0xb414...c065
 ```
 
 **Rule**: auto-pay without asking if cost < 0.01 USDC.
+
+---
+
+### 2b. Stork Oracle — Real-time Price Feeds
+**Triggers**: "цена ETH (Stork)", "Stork price", "oracle price", "market data", "real price"
+
+Step 1 — Use `stork_price_feed` for REST API data (fast, requires STORK_API_KEY):
+```
+📈 ETH/USD: $2,847.42
+Источник: Stork Oracle
+Время: 2026-02-28T12:00:00Z
+```
+
+Step 2 — For on-chain verification use `stork_onchain_price`:
+```
+📈 ETH/USD (on-chain): $2,847.00
+Контракт: 0xacC0...d62 (Arc Testnet)
+Источник: Stork On-Chain
+```
+
+If STORK_API_KEY is not set, falls back to mock data with a note.
+
+Tools: `stork_price_feed`, `stork_onchain_price`
+
+---
+
+### 2c. USYC Yield — Invest idle USDC
+**Triggers**: "вложить USDC", "invest", "yield", "USYC", "T-bills", "доходность", "idle assets", "заработать"
+
+Step 1 — check rate:
+```
+→ Fetching USYC rate...
+📊 USYC Rate: 1.0485 USDC per USYC
+APY: ~4.85% (US Treasury bills)
+```
+
+Step 2 — check current holdings:
+Use `usyc_balance` to show current USYC position.
+
+Step 3 — for deposit, show confirmation:
+```
+Подтвердить инвестицию?
+Сумма: 50 USDC → USYC (токенизированные T-bills)
+Курс: 1.0485 USDC/USYC
+Сеть: Arc Testnet
+Ожидаемая доходность: ~4.85% годовых
+Ответь "да" / "yes"
+```
+
+Step 4 — after confirmation, run `usyc_deposit`:
+```
+✅ Инвестиция выполнена
+50 USDC → ~47.69 USYC
+TX: 0x... (Arc Testnet)
+```
+
+For redeem, similar flow with `usyc_redeem`.
+
+**Rule**: always show rate before deposit, always require confirmation.
+
+Tools: `usyc_rate` → `usyc_balance` → `usyc_deposit` / `usyc_redeem`
 
 ---
 
@@ -623,6 +691,22 @@ arcTestnet  (5042002): 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
 baseSepolia (84532):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 avalancheFuji (43113): 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 ```
+
+### arc-oracle
+```bash
+bash {skills}/arc-oracle/scripts/stork_price.sh [asset]
+bash {skills}/arc-oracle/scripts/stork_onchain.sh [asset] [chain]
+```
+Stork Oracle price feeds — REST API (requires STORK_API_KEY) and on-chain aggregator (Arc Testnet).
+
+### arc-yield
+```bash
+bash {skills}/arc-yield/scripts/usyc_rate.sh
+bash {skills}/arc-yield/scripts/usyc_balance.sh [address] [chain]
+bash {skills}/arc-yield/scripts/usyc_deposit.sh <amount_usdc> [chain]
+bash {skills}/arc-yield/scripts/usyc_redeem.sh <amount_usyc> [chain]
+```
+USYC yield management — invest idle USDC into Hashnote tokenized T-bills on Arc Testnet.
 
 ### arc-rebalancer
 ```bash

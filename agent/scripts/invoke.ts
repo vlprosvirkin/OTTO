@@ -188,6 +188,34 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleX402PayerInfo } = await import(`${MCP}/x402.js`);
     return handleX402PayerInfo({} as never);
   },
+
+  // ── Stork Oracle (no Supabase) ──────────────────────────────────────
+  stork_price_feed: async (a) => {
+    const { handleStorkPrice } = await import(`${MCP}/stork.js`);
+    return handleStorkPrice(a as { assets?: string });
+  },
+  stork_onchain_price: async (a) => {
+    const { handleStorkOnChainPrice } = await import(`${MCP}/stork.js`);
+    return handleStorkOnChainPrice(a as { asset?: string; chain?: string });
+  },
+
+  // ── USYC Yield (no Supabase) ───────────────────────────────────────
+  usyc_rate: async () => {
+    const { handleUsycRate } = await import(`${MCP}/usyc.js`);
+    return handleUsycRate();
+  },
+  usyc_balance: async (a) => {
+    const { handleUsycBalance } = await import(`${MCP}/usyc.js`);
+    return handleUsycBalance(a as { address?: string; chain?: string });
+  },
+  usyc_deposit: async (a) => {
+    const { handleUsycDeposit } = await import(`${MCP}/usyc.js`);
+    return handleUsycDeposit(a as { amount_usdc: number; chain?: string });
+  },
+  usyc_redeem: async (a) => {
+    const { handleUsycRedeem } = await import(`${MCP}/usyc.js`);
+    return handleUsycRedeem(a as { amount_usyc: number; chain?: string });
+  },
 };
 
 async function main() {

@@ -53,7 +53,7 @@ describe("mockEthPrice", () => {
     expect(data).toHaveProperty("price");
     expect(data).toHaveProperty("change24h");
     expect(data).toHaveProperty("volume24h", 12_480_000_000);
-    expect(data).toHaveProperty("source",    "OTTO Demo Oracle");
+    expect(data).toHaveProperty("source",    "OTTO Demo Oracle (mock)");
     expect(data).toHaveProperty("timestamp");
   });
 
@@ -166,7 +166,7 @@ describe("GET /eth-price (x402 bypassed)", () => {
     expect(typeof res.body.price).toBe("number");
     expect(typeof res.body.change24h).toBe("number");
     expect(res.body.volume24h).toBe(12_480_000_000);
-    expect(res.body.source).toBe("OTTO Demo Oracle");
+    expect(res.body.source).toMatch(/Stork Oracle|OTTO Demo Oracle \(mock\)/);
     expect(res.body.timestamp).toBeTruthy();
   });
 });
