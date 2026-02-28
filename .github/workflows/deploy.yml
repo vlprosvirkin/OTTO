@@ -61,6 +61,7 @@ jobs:
 
             echo "→ ensure openclaw config"
             npx --prefix "$OTTO/agent" openclaw config set gateway.mode local 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw config set gateway.auth.mode none 2>/dev/null || true
             npx --prefix "$OTTO/agent" openclaw config set gateway.controlUi.allowedOrigins '["https://ottoarc.xyz"]' 2>/dev/null || true
 
             echo "→ configure trusted proxy (Caddy)"
