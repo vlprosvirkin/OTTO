@@ -43,11 +43,9 @@ Default limits: **10 USDC / tx · 100 USDC / day**
 Add to `.env`:
 ```bash
 X402_PAYER_PRIVATE_KEY=<agent private key>
-# Optional overrides (defaults above are used otherwise):
-VAULT_ADDRESS_ARC=0x...
-VAULT_ADDRESS_BASE=0x...
-VAULT_ADDRESS_FUJI=0x...
 ```
+
+Vault addresses are resolved automatically from the user registry or on-chain via CREATE2.
 
 ## Scripts
 

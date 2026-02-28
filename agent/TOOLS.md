@@ -9,6 +9,8 @@
 - **arc-x402** — x402 nanopayment fetch, payer wallet info
 - **arc-vault** — OTTOVault operations (status, transfer, deposit, payroll)
 - **arc-rebalancer** — cross-chain vault monitoring and rebalancing
+- **arc-oracle** — Stork Oracle price feeds (REST API + on-chain aggregator)
+- **arc-yield** — USYC yield management (invest idle USDC into tokenized T-bills)
 
 ## Chains
 
