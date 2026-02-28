@@ -321,6 +321,91 @@ The team lead asks for a snapshot of the treasury at any time — mid-meeting, f
 
 ---
 
+## x402 for Treasury Management — Why It Matters
+
+A treasury agent doesn't operate in a vacuum. To make good decisions it needs external data, and in crypto that data often sits behind paywalls. x402 turns every paid API into a tool the agent can use autonomously — no subscriptions, no API keys, no human approval.
+
+### Paying for Data to Make Decisions
+
+The agent manages USDC across Arc, Base, and Avalanche. To decide **when** and **where** to move funds it needs information:
+
+| Data | Why the Agent Needs It | Example |
+|------|----------------------|---------|
+| Price feeds (ETH/USD, BTC/USD) | Detect arbitrage opportunities, time rebalances | Agent sees USDC liquidity shifting on Base → queries oracle → confirms the move → rebalances via Gateway |
+| Gas oracles | Pick the cheapest moment for cross-chain transfers | Agent checks gas on 3 chains → waits for a dip → executes transfer at lowest cost |
+| Liquidity analytics (TVL, volumes) | Decide which chain needs more USDC | Agent queries DeFi analytics API → chain X TVL is dropping → preemptively moves funds out |
+
+Each query costs fractions of a cent. The agent pays from its own payer wallet, gets the data, acts on it — all in one autonomous loop.
+
+```
+Agent decides to rebalance
+  → x402_fetch("https://oracle.example/eth-price")     // pays $0.001
+  → x402_fetch("https://gas.example/arc-testnet")       // pays $0.001
+  → analyzes: "ETH rising, gas low on Arc — good time to move"
+  → transfer_usdc_custodial(Base → Arc, 10 USDC)
+  → Telegram: "Rebalanced. Spent $0.002 on data, moved 10 USDC."
+```
+
+### Paying for Compliance and Risk Checks
+
+Before every outgoing payment — payroll, vendor, or ad-hoc — the agent can verify the recipient:
+
+- **KYC/AML screening** — "Is this address flagged?" Pay $0.01 per check, get an instant answer
+- **Compliance oracle** — "Can we send USDC to this jurisdiction?" The agent pays for a jurisdiction check before executing a cross-border payroll transfer
+- **Credit / reputation scoring** — Before releasing funds from the vault, verify the counterparty's on-chain history
+
+No annual compliance SaaS subscription. The agent pays per-check, only when it actually needs to send money.
+
+### Paying for Infrastructure
+
+Treasury operations depend on reliable infrastructure. x402 lets the agent pay for premium services on demand:
+
+- **Premium RPC nodes** — Faster, more reliable reads for balance checks and transaction monitoring. Pay per-request instead of a monthly plan
+- **Blockchain indexers** — Query transaction history for treasury reports. The agent pays the indexer directly when the team asks for a spending summary
+- **Notification relays** — Priority webhook delivery for critical alerts (vault approaching daily limit, large inbound transfer detected)
+
+### The Economic Model
+
+Traditional treasury tooling:
+```
+Bloomberg terminal    $24,000/year
+Chainalysis API       $5,000/year
+Premium RPC node      $1,200/year
+Compliance checks      $800/year
+                    ─────────────
+Total:               $31,000/year  (fixed cost, whether you use it or not)
+```
+
+OTTO with x402:
+```
+Price feed queries     ~$0.001 × 100/day = $3/month
+Compliance checks      ~$0.01  × 30/month = $0.30/month
+RPC / indexer calls    ~$0.001 × 500/day  = $15/month
+                     ─────────────────────
+Total:                ~$18/month  (pay only for what you use)
+```
+
+The agent spends from the same treasury it manages. These operational costs are visible in `x402_payer_info`, trackable, and capped by the payer wallet balance — the agent literally cannot overspend because the wallet runs dry before any damage is done.
+
+### Full Autonomous Cycle
+
+This is the end-state vision: a treasury agent that **earns, spends, and reports** — all without human intervention.
+
+```
+1. Vault receives USDC (incoming payment, yield, deposit)
+2. Agent detects the inflow via balance monitoring
+3. Agent queries price + liquidity oracles (pays via x402)
+4. Agent decides: "Arc is underweight, Base is overweight"
+5. Agent runs compliance check on the rebalance path (pays via x402)
+6. Agent executes cross-chain transfer via Gateway
+7. Agent reports the full cycle to Telegram — including x402 costs
+
+Total human involvement: zero.
+Total x402 spend: < $0.01.
+```
+
+---
+
 ## Why This Matters
 
 **Treasuries don't sleep.** Chains don't pause for timezones. A custodial wallet sitting idle on one chain while another runs dry is a risk and an opportunity cost — but checking and rebalancing manually is not scalable.
