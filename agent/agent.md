@@ -167,8 +167,8 @@ Gateway (unified): 40.00 USDC
 **Triggers**: "цена ETH", "ETH price", "статистика Arc", "Arc stats"
 
 Oracle endpoints (0.001 USDC each, Base Sepolia):
-- `http://localhost:4402/eth-price`
-- `http://localhost:4402/arc-stats`
+- `https://otto-production-cfcf.up.railway.app/eth-price`
+- `https://otto-production-cfcf.up.railway.app/arc-stats`
 
 Show progress:
 ```
