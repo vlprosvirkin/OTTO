@@ -54,7 +54,7 @@ const EXPLORER_TX: Record<SupportedChain, string> = {
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
 
-// Vault addresses are resolved from the user-vaults.json registry, not env vars.
+// Vault addresses are resolved from user-vaults.json registry or on-chain via CREATE2.
 
 // ─── Contract ABI ─────────────────────────────────────────────────────────────
 
@@ -203,15 +203,58 @@ function resolveChain(chain?: string): SupportedChain {
   );
 }
 
-function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string, userId?: string): Address {
+async function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string, userId?: string, ethAddress?: string): Promise<Address> {
   if (vaultAddress) return vaultAddress as Address;
+
+  const registry = loadUserVaults();
+
+  // Direct lookup by user_id
   if (userId) {
-    const registry = loadUserVaults();
     const addr = registry[userId]?.[chain];
     if (addr) return addr as Address;
   }
+
+  // Reverse lookup by eth_address: find user_id in users.json, then check registry
+  if (ethAddress) {
+    const users = loadUsers();
+    const foundId = Object.entries(users).find(
+      ([, u]) => u.eth_address?.toLowerCase() === ethAddress.toLowerCase()
+    )?.[0];
+    if (foundId) {
+      const addr = registry[foundId]?.[chain];
+      if (addr) return addr as Address;
+    }
+  }
+
+  // On-chain discovery via CREATE2: compute predicted address and check if deployed
+  if (ethAddress) {
+    const salt = keccak256(toHex(ethAddress.toLowerCase()));
+    const client = getPublicClient(chain);
+    const predicted = await client.readContract({
+      address: FACTORY_ADDRESS,
+      abi: FACTORY_ABI,
+      functionName: "computeAddress",
+      args: [salt, OTTO_AGENT_ADDRESS, DEFAULT_MAX_PER_TX, DEFAULT_DAILY_LIMIT, false],
+    }) as Address;
+
+    const code = await client.getCode({ address: predicted });
+    if (code && code !== "0x") {
+      // Found on-chain! Cache in registry for future lookups
+      const uid = userId ?? ethAddress.toLowerCase();
+      if (!registry[uid]) registry[uid] = {};
+      registry[uid][chain] = predicted;
+      saveUserVaults(registry);
+      return predicted;
+    }
+  }
+
   throw new Error(`No vault found for chain ${chain}. Deploy a vault first or provide vault_address.`);
 }
+
+// Default deploy params (must match frontend vault-config.ts)
+const OTTO_AGENT_ADDRESS: Address = "0xA9A48d73f67b0c820fDE57c8B0639c6f850Ae96e";
+const DEFAULT_MAX_PER_TX = BigInt(10_000_000);   // 10 USDC
+const DEFAULT_DAILY_LIMIT = BigInt(100_000_000);  // 100 USDC
 
 function getPublicClient(chain: SupportedChain) {
   return createPublicClient({ chain: CHAINS[chain], transport: http() });
@@ -241,6 +284,7 @@ export interface VaultStatusParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -248,7 +292,7 @@ export interface VaultStatusParams {
  */
 export async function handleVaultStatus(params: VaultStatusParams): Promise<string> {
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const client = getPublicClient(chain);
 
   const result = (await client.readContract({
@@ -290,6 +334,7 @@ export interface VaultTransferParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -299,7 +344,7 @@ export interface VaultTransferParams {
 export async function handleVaultTransfer(params: VaultTransferParams): Promise<string> {
   const { to, amount_usdc } = params;
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
 
   if (!to?.startsWith("0x")) throw new Error("Invalid recipient — must be 0x-prefixed");
   if (!amount_usdc || amount_usdc <= 0) throw new Error("Amount must be positive");
@@ -352,6 +397,7 @@ export interface VaultCanTransferParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -360,7 +406,7 @@ export interface VaultCanTransferParams {
 export async function handleVaultCanTransfer(params: VaultCanTransferParams): Promise<string> {
   const { to, amount_usdc } = params;
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const amountAtomic = BigInt(Math.round(amount_usdc * 1_000_000));
 
   const client = getPublicClient(chain);
@@ -414,6 +460,7 @@ export interface VaultDepositParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -424,7 +471,7 @@ export interface VaultDepositParams {
 export async function handleVaultDeposit(params: VaultDepositParams): Promise<string> {
   const { amount_usdc } = params;
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
 
   if (!amount_usdc || amount_usdc <= 0) throw new Error("Amount must be positive");
 
@@ -486,6 +533,7 @@ export async function handleVaultDeposit(params: VaultDepositParams): Promise<st
 export interface RebalanceCheckParams {
   min_usdc?: number;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -497,7 +545,7 @@ export async function handleRebalanceCheck(params: RebalanceCheckParams): Promis
   const chains: SupportedChain[] = ["arcTestnet", "baseSepolia", "avalancheFuji"];
 
   const results = await Promise.all(chains.map(async (chain) => {
-    const vaultAddr = resolveVaultAddress(chain, undefined, params.user_id);
+    const vaultAddr = await resolveVaultAddress(chain, undefined, params.user_id, params.eth_address);
     const client = getPublicClient(chain);
 
     const raw = (await client.readContract({
@@ -960,6 +1008,7 @@ export interface EncodeAdminTxParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
   // setLimits
   max_per_tx_usdc?: number;
   daily_limit_usdc?: number;
@@ -990,7 +1039,7 @@ const SIGN_BASE_URL = process.env.OTTO_SIGN_URL ?? "https://ottoarc.xyz/sign";
  */
 export async function handleEncodeAdminTx(params: EncodeAdminTxParams): Promise<string> {
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const fn = params.function;
 
   let data: `0x${string}`;
@@ -1225,6 +1274,7 @@ export interface VaultCheckWhitelistParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -1237,7 +1287,7 @@ export async function handleVaultCheckWhitelist(params: VaultCheckWhitelistParam
   if (!isAddress(address)) throw new Error(`Invalid address: ${address}`);
 
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const client = getPublicClient(chain);
 
   const [whitelisted, whitelistEnabled] = await Promise.all([
@@ -1285,6 +1335,7 @@ export interface VaultPayrollParams {
   chain?: string;
   vault_address?: string;
   user_id?: string;
+  eth_address?: string;
 }
 
 /**
@@ -1296,7 +1347,7 @@ export async function handleVaultPayroll(params: VaultPayrollParams): Promise<st
   if (!recipients || recipients.length === 0) throw new Error("recipients array is required and must not be empty");
 
   const chain = resolveChain(params.chain);
-  const vaultAddr = resolveVaultAddress(chain, params.vault_address, params.user_id);
+  const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const publicClient = getPublicClient(chain);
 
   // Validate all recipients
