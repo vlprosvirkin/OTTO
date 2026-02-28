@@ -1,0 +1,37 @@
+Business Source License 1.1
+
+Licensor: Vladimir Prosvirkin
+Licensed Work: OTTO — Autonomous AI Treasury Agent on Arc
+
+Copyright (c) 2026 Vladimir Prosvirkin
+
+Use Limitation:
+The Licensed Work may not be used for commercial purposes, including but not limited to:
+- operating a competing service
+- offering treasury automation as a product
+- embedding in commercial SaaS
+- running production financial agents for third parties
+
+Non-Production Use:
+You may use, copy, modify, and distribute the Licensed Work for:
+- hackathons
+- research
+- evaluation
+- educational purposes
+- internal testing
+
+Additional Restriction:
+No use of this software is permitted for managing real financial assets
+without explicit written permission from the Licensor.
+
+Change Date: 1 February 2030
+
+Change License: MIT License
+
+Additional Use Grant:
+Use of the Licensed Work in demos, presentations, hackathons,
+or academic research is explicitly permitted.
+
+Contact: vlprosvirkin@gmail.com
+
+All rights reserved until the Change Date.

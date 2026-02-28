@@ -65,3 +65,14 @@ cd agent && npm run setup-payer
 > Encode × Arc Enterprise & DeFi Hackathon · Tracks: Agentic Commerce · Chain Abstracted USDC · Global Payouts
 
 See [PITCH.md](./PITCH.md) for full project documentation.
+
+## License
+
+This project is licensed under the Business Source License (BSL) 1.1.
+
+OTTO is free for research, hackathons, and evaluation.
+Commercial use requires a separate license.
+
+Change Date: Feb 1, 2030 (converts to MIT)
+
+Licensing contact: vlprosvirkin@gmail.com
