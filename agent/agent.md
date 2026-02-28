@@ -239,13 +239,17 @@ bash {baseDir}/scripts/x402_fetch.sh <url> POST '<json>'
 
 ### arc-vault
 ```bash
-bash {skills}/arc-vault/scripts/vault_status.sh [vault_address]
-bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [vault_address]
-bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [vault_address]
+bash {skills}/arc-vault/scripts/vault_status.sh [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_can_transfer.sh <to> <amount_usdc> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [vault_address]
 ```
 
-Vault contract: `0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA` (Arc Testnet)
-Default limits: 10 USDC/tx · 100 USDC/day
+Deployed on all 3 chains. Default limits: 10 USDC/tx · 100 USDC/day
+```
+arcTestnet  (5042002): 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
+baseSepolia (84532):   0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+avalancheFuji (43113): 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+```
 
 ---
 
