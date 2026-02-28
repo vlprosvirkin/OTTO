@@ -17,7 +17,8 @@
     "telegram": {
       "token": { "source": "env", "id": "TELEGRAM_BOT_TOKEN" },
       "adminChatId": { "source": "env", "id": "TELEGRAM_ADMIN_CHAT_ID" }
-    }
+    },
+    "webchat": {}
   },
 
   "gateway": {

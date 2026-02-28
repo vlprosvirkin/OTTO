@@ -1,0 +1,3 @@
+api.ottoarc.xyz {
+	reverse_proxy localhost:18789
+}

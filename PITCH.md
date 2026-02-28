@@ -169,9 +169,12 @@ Pause:       admin can halt all agent operations immediately
 These limits are enforced at the EVM level. No instruction, no prompt injection, no AI compromise can override them — the blockchain rejects the transaction before USDC moves.
 
 ```
-Deployed: 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA (Arc Testnet)
+Deployed on 3 chains (verified):
+  Arc Testnet:     0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
+  Base Sepolia:    0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+  Avalanche Fuji:  0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 Stack:    Solidity 0.8.20 + OpenZeppelin + Foundry
-Tests:    17/17 passing
+Tests:    43 Solidity + 101 vitest = 144 total, all passing
 ```
 
 The agent calls `vault_status` to check available allowance, `vault_can_transfer` to preview a transfer, and `vault_transfer` to execute it — all via MCP tools wired through `invoke.ts`.
@@ -228,6 +231,16 @@ The agent's payer wallet (`0xA9A4...Ae96e`) holds USDC on Arc Testnet and pays f
 | `vault_status` 🔒 | Full OTTOVault state: balance, limits, agent, admin |
 | `vault_transfer` 🔒 | Transfer USDC from vault within on-chain enforced limits |
 | `vault_can_transfer` 🔒 | Preview: would transfer succeed? (no transaction sent) |
+| `vault_deposit` 🔒 | Top up vault from agent wallet (approve + deposit) |
+| `deploy_user_vault` 🔒 | Deploy personal OTTOVault for a Telegram user |
+| `get_user_vault` 🔒 | Look up vault address(es) for a user |
+| `register_user_address` 🔒 | Register user's ETH wallet for vault admin ownership |
+| `get_user_address` 🔒 | Look up registered ETH address for a user |
+| `transfer_vault_admin` 🔒 | Transfer vault admin from OTTO to user's wallet |
+| `encode_admin_tx` 🔒 | Encode calldata for Tier 3 admin ops (user signs via signing page) |
+| `create_invoice` 🔒 | Create compliance invoice for expected incoming payment |
+| `check_invoice_status` 🔒 | Check if invoice has been paid (balance comparison) |
+| `rebalance_check` 🔄 | Check vault balances on all chains, report health + shortfall |
 
 ---
 
@@ -378,31 +391,27 @@ For all treasury operations, private keys never leave Circle's infrastructure. T
 |--------|-------------|---------|
 | Check balances | ✅ Always | — |
 | Fetch x402 data | ✅ Auto | < 0.01 USDC in payer wallet |
-| Transfer ≤ 500 USDC | ✅ With confirmation | User "да/yes" + contract allowance |
-| Transfer > 500 USDC | ❌ Blocked | Contract rejects regardless of prompt |
-| Send to unknown address | ❌ Blocked | Not in whitelist — contract rejects |
-| Send to non-whitelisted chain | ❌ Blocked | Contract rejects |
+| Vault transfer ≤ 10 USDC | ✅ With confirmation | User "да/yes" + within per-tx cap |
+| Vault transfer > 10 USDC | ❌ Blocked | Contract rejects (per-tx limit) |
+| Vault spend > 100 USDC/day | ❌ Blocked | Contract rejects (daily cap) |
+| Send to unknown address | ❌ Blocked | Whitelist enabled — contract rejects |
+| Change limits / pause / withdraw | ❌ Cannot | Requires admin wallet signature (Tier 3) |
 | Export private keys | ❌ Impossible | Circle DCW — keys never leave Circle |
 | Exceed daily limit | ❌ Blocked | Contract enforces cumulative cap |
 
 ### Organizational Policy as Code
 
-OTTO's spending rules are not a trust relationship — they are **code on a blockchain**. The organization sets limits once through Circle's API, and those limits become immutable constraints:
+OTTO's spending rules are not a trust relationship — they are **code on a blockchain**. The admin sets limits once via the OTTOVault contract, and those limits become immutable constraints that survive any AI compromise:
 
-```typescript
-// Example: Configure SCA policy for OTTO
-await circle.updateWalletPolicy({
-  walletId: "otto-treasury-wallet",
-  policy: {
-    maxTransactionAmount: { amount: "500", currency: "USDC" },
-    dailyLimit: { amount: "2000", currency: "USDC" },
-    allowedRecipients: ["0xAlice...", "0xBob...", "0xCarol..."],
-    allowedChains: ["arcTestnet", "baseSepolia"],
-  }
-});
+```solidity
+// OTTOVault enforces these at the EVM level:
+maxPerTx:         10 USDC   // single transfer cap
+dailyLimit:       100 USDC  // cumulative 24h window
+whitelistEnabled: true      // only approved recipients
+paused:           false     // admin can halt instantly
 ```
 
-Any instruction to OTTO — whether from a legitimate user, a compromised Telegram account, or a prompt injection attack — that exceeds these parameters will fail at the contract layer. Not because the agent refuses, but because the blockchain refuses.
+The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO cannot change them. Any instruction to OTTO — whether from a legitimate user, a compromised Telegram account, or a prompt injection attack — that exceeds these parameters will fail at the contract layer. Not because the agent refuses, but because the blockchain refuses.
 
 ---
 
@@ -410,17 +419,20 @@ Any instruction to OTTO — whether from a legitimate user, a compromised Telegr
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `arc-wallet-mcp` — full MCP server | ✅ Built | 22 tools across 6 modules |
+| `arc-wallet-mcp` — full MCP server | ✅ Built | 29 tools across 7 modules |
 | `x402_fetch` + `x402_payer_info` tools | ✅ Built | Auto-pay on HTTP 402 |
 | x402 payer wallet (funded) | ✅ Ready | 20 USDC on Arc Testnet |
-| OTTO agent framework | ✅ Built | Claude, Telegram, bash skills |
-| All bash skill scripts | ✅ Built | arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault |
-| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all tools wired |
-| **OTTOVault smart contract** | ✅ Deployed | Arc Testnet · 17/17 tests passing |
-| **vault_status / vault_transfer / vault_can_transfer** | ✅ Built | MCP tools + bash skills |
+| OTTO agent framework | ✅ Built | Claude (Anthropic), Telegram, bash skills |
+| All bash skill scripts | ✅ Built | 7 skills, 29 scripts: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer |
+| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 29 tools wired |
+| **OTTOVault smart contract** | ✅ Deployed | All 3 chains · 43 Solidity tests + 101 vitest = 144 total |
+| **Vault tools** (status, transfer, can_transfer, deposit) | ✅ Built | MCP tools + bash skills |
+| **User ownership** (register_address, transfer_admin, encode_admin_tx) | ✅ Built | Tier 3 signing flow via ottoarc.xyz |
+| **Invoice / compliance** (create_invoice, check_invoice_status) | ✅ Built | Off-chain tracking with on-chain balance verification |
 | Demo x402 oracle server | ✅ Built | Express, 3 endpoints (health, eth-price, arc-stats) |
-| Contract verification on Arc Explorer | ⬜ To do | `forge verify-contract` |
-| Rebalancer skill | ⬜ To do | Bash threshold logic, ~30 lines |
+| Rebalancer skill | ✅ Built | Cross-chain vault monitoring + auto-rebalance via heartbeat |
+| Contract verification | ✅ Verified | Arc Testnet, Base Sepolia, Avalanche Fuji |
+| CI/CD auto-deploy | ✅ Built | GitHub Actions → GCP via SSH + Telegram notifications |
 
 ---
 
@@ -450,7 +462,7 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 │       ├── deposit.ts       # deposit_usdc, withdraw_usdc
 │       ├── gateway.ts       # get_gateway_info, get_supported_chains, ...
 │       ├── x402.ts          # x402_fetch, x402_payer_info ✨
-│       └── vault.ts         # vault_status, vault_transfer, vault_can_transfer 🔒
+│       └── vault.ts         # vault/admin/invoice/rebalance tools (13 handlers) 🔒
 │
 ├── agent/                   # OTTO agent (OpenClaw)
 │   ├── agent.md             # Agent identity, rules, tool docs
@@ -463,12 +475,13 @@ OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
 │       ├── arc-transfer/    # Transfer and deposit scripts
 │       ├── arc-gateway/     # Gateway info scripts
 │       ├── arc-x402/        # x402 payment scripts ✨
-│       └── arc-vault/       # OTTOVault scripts 🔒
+│       ├── arc-vault/       # OTTOVault + admin + invoice scripts (11) 🔒
+│       └── arc-rebalancer/  # Cross-chain vault monitoring 🔄
 │
 ├── contracts/               # Solidity (Foundry)
 │   ├── src/OTTOVault.sol    # Treasury vault contract
-│   ├── test/OTTOVault.t.sol # 17 tests, all passing
-│   └── script/Deploy.s.sol  # Arc Testnet deployment
+│   ├── test/OTTOVault.t.sol # 43 tests (unit + fuzz), all passing
+│   └── script/Deploy.s.sol  # Multi-chain deployment script
 │
 └── demo-server/             # x402 oracle demo (Express)
     └── server.ts            # /eth-price, /arc-stats — pay-per-request

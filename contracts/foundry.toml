@@ -10,6 +10,9 @@ solc_version = "0.8.20"
 [rpc_endpoints]
 arc_testnet = "https://rpc.testnet.arc.network/${ARC_TESTNET_RPC_KEY}"
 base_sepolia = "https://sepolia.base.org"
+avalanche_fuji = "https://api.avax-test.network/ext/bc/C/rpc"
 
 [etherscan]
-arc_testnet = { key = "no-api-key", url = "https://explorer.testnet.arc.network/api" }
+arc_testnet = { key = "no-api-key", url = "https://testnet.arcscan.app/api/" }
+base_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
+avalanche_fuji = { key = "routescan", url = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan/api" }

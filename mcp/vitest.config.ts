@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  server: {
+    fs: { allow: [".."] }, // allow importing ../demo-server/
+  },
   test: {
     environment: "node",
     globals: true,

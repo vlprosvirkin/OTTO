@@ -63,6 +63,14 @@ jobs:
             nohup npx --prefix "$OTTO/agent" openclaw gateway run \
               >> "$HOME/otto.log" 2>&1 &
             echo "  PID: $!"
+
+            echo "→ setup caddy reverse proxy"
+            if ! command -v caddy &>/dev/null; then
+              sudo apt-get update -qq && sudo apt-get install -y -qq caddy
+            fi
+            sudo cp "$OTTO/Caddyfile" /etc/caddy/Caddyfile
+            sudo systemctl reload caddy || sudo systemctl restart caddy
+            echo "  Caddy OK"
           ENDSSH
 
       - name: Smoke test

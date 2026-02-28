@@ -231,4 +231,235 @@ contract OTTOVaultTest is Test {
         assertEq(ag,  agent);
         assertEq(adm, admin);
     }
+
+    function test_StatusDailySpentIsZeroAfterWindowExpires() public {
+        vm.prank(agent);
+        vault.transfer(alice, 10e6);
+        assertEq(vault.dailySpent(), 10e6);
+
+        vm.warp(block.timestamp + 1 days);
+
+        (, , , uint256 dailySpent_, uint256 remaining, , , ,) = vault.status();
+        assertEq(dailySpent_, 0,           "dailySpent should be 0 after window expires");
+        assertEq(remaining,   DAILY_LIMIT, "remaining should be full daily limit");
+    }
+
+    // ─── Deposit ──────────────────────────────────────────────────────────────
+
+    function test_AnyoneCanDeposit() public {
+        usdc.mint(alice, 50e6);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), 50e6);
+        vault.deposit(50e6);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(address(vault)), 250e6); // 200 initial + 50
+    }
+
+    function test_DepositEmitsEvent() public {
+        usdc.mint(alice, 10e6);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), 10e6);
+        vm.recordLogs();
+        vault.deposit(10e6);
+        vm.stopPrank();
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertGt(logs.length, 0, "Deposit event not emitted");
+    }
+
+    function test_DepositZeroReverts() public {
+        vm.prank(alice);
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        vault.deposit(0);
+    }
+
+    // ─── transferAdmin ────────────────────────────────────────────────────────
+
+    function test_AdminCanTransferAdmin() public {
+        address newAdmin = address(0xAB);
+        vm.prank(admin);
+        vault.transferAdmin(newAdmin);
+        assertEq(vault.admin(), newAdmin);
+    }
+
+    function test_TransferAdminEmitsEvent() public {
+        address newAdmin = address(0xAB);
+        vm.recordLogs();
+        vm.prank(admin);
+        vault.transferAdmin(newAdmin);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertGt(logs.length, 0);
+    }
+
+    function test_OldAdminLosesAccessAfterTransfer() public {
+        address newAdmin = address(0xAB);
+        vm.prank(admin);
+        vault.transferAdmin(newAdmin);
+
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.NotAdmin.selector);
+        vault.setLimits(20e6, 200e6);
+    }
+
+    function test_NewAdminGainsAccessAfterTransfer() public {
+        address newAdmin = address(0xAB);
+        vm.prank(admin);
+        vault.transferAdmin(newAdmin);
+
+        vm.prank(newAdmin);
+        vault.setLimits(20e6, 200e6);
+        assertEq(vault.maxPerTx(), 20e6);
+    }
+
+    function test_TransferAdminToZeroReverts() public {
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.ZeroAddress.selector);
+        vault.transferAdmin(address(0));
+    }
+
+    function test_NonAdminCannotTransferAdmin() public {
+        vm.prank(hacker);
+        vm.expectRevert(OTTOVault.NotAdmin.selector);
+        vault.transferAdmin(hacker);
+    }
+
+    // ─── setLimits ────────────────────────────────────────────────────────────
+
+    function test_AdminCanSetLimits() public {
+        vm.prank(admin);
+        vault.setLimits(50e6, 500e6);
+        assertEq(vault.maxPerTx(),   50e6);
+        assertEq(vault.dailyLimit(), 500e6);
+    }
+
+    function test_SetLimitsZeroMaxPerTxReverts() public {
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        vault.setLimits(0, 100e6);
+    }
+
+    function test_SetLimitsZeroDailyLimitReverts() public {
+        vm.prank(admin);
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        vault.setLimits(10e6, 0);
+    }
+
+    function test_NewLimitsTakeEffectImmediately() public {
+        vm.prank(admin);
+        vault.setLimits(1e6, 5e6); // tighten to 1 USDC/tx
+
+        vm.prank(agent);
+        vm.expectRevert(
+            abi.encodeWithSelector(OTTOVault.ExceedsPerTxLimit.selector, 5e6, 1e6)
+        );
+        vault.transfer(alice, 5e6);
+    }
+
+    // ─── canTransfer — edge cases ────────────────────────────────────────────
+
+    function test_CanTransferReturnsFalseWhenPaused() public {
+        vm.prank(admin);
+        vault.setPaused(true);
+
+        (bool ok, string memory reason) = vault.canTransfer(alice, 5e6);
+        assertFalse(ok);
+        assertEq(reason, "Vault is paused");
+    }
+
+    function test_CanTransferReturnsFalseWhenWhitelistBlocks() public {
+        vm.prank(admin);
+        vault.setWhitelistEnabled(true);
+
+        (bool ok, string memory reason) = vault.canTransfer(alice, 5e6);
+        assertFalse(ok);
+        assertEq(reason, "Recipient not whitelisted");
+    }
+
+    function test_CanTransferReturnsFalseWhenInsufficientBalance() public {
+        vm.prank(admin);
+        vault.withdraw(200e6); // drain vault
+
+        (bool ok, string memory reason) = vault.canTransfer(alice, 1e6);
+        assertFalse(ok);
+        assertEq(reason, "Insufficient vault balance");
+    }
+
+    function test_CanTransferReturnsFalseWhenDailyLimitWouldExceed() public {
+        for (uint256 i = 0; i < 9; i++) {
+            vm.prank(agent);
+            vault.transfer(alice, 10e6);
+        }
+        vm.prank(agent);
+        vault.transfer(alice, 5e6); // 95 spent, 5 remaining
+
+        (bool ok, string memory reason) = vault.canTransfer(alice, 6e6);
+        assertFalse(ok);
+        assertEq(reason, "Exceeds daily limit");
+    }
+
+    function test_CanTransferAccountsForWindowReset() public {
+        for (uint256 i = 0; i < 10; i++) {
+            vm.prank(agent);
+            vault.transfer(alice, 10e6);
+        }
+        (bool ok1,) = vault.canTransfer(alice, 1e6);
+        assertFalse(ok1, "should be blocked after daily limit exhausted");
+
+        vm.warp(block.timestamp + 1 days);
+
+        (bool ok2,) = vault.canTransfer(alice, 10e6);
+        assertTrue(ok2, "should be allowed after window resets");
+    }
+
+    // ─── Constructor validation ───────────────────────────────────────────────
+
+    function test_ConstructorRejectsZeroUsdcAddress() public {
+        vm.expectRevert(OTTOVault.ZeroAddress.selector);
+        new OTTOVault(address(0), agent, MAX_PER_TX, DAILY_LIMIT, false);
+    }
+
+    function test_ConstructorRejectsZeroAgentAddress() public {
+        vm.expectRevert(OTTOVault.ZeroAddress.selector);
+        new OTTOVault(address(usdc), address(0), MAX_PER_TX, DAILY_LIMIT, false);
+    }
+
+    function test_ConstructorRejectsZeroMaxPerTx() public {
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        new OTTOVault(address(usdc), agent, 0, DAILY_LIMIT, false);
+    }
+
+    function test_ConstructorRejectsZeroDailyLimit() public {
+        vm.expectRevert(OTTOVault.ZeroAmount.selector);
+        new OTTOVault(address(usdc), agent, MAX_PER_TX, 0, false);
+    }
+
+    function test_ConstructorSetsAdminToDeployer() public {
+        address deployer = address(0xDE);
+        vm.prank(deployer);
+        OTTOVault v = new OTTOVault(address(usdc), agent, MAX_PER_TX, DAILY_LIMIT, false);
+        assertEq(v.admin(), deployer);
+    }
+
+    // ─── Fuzz ─────────────────────────────────────────────────────────────────
+
+    function testFuzz_TransferWithinLimitsAlwaysSucceeds(uint256 amount) public {
+        amount = bound(amount, 1, MAX_PER_TX);
+        usdc.mint(address(vault), amount);
+
+        vm.prank(agent);
+        vault.transfer(alice, amount);
+        assertGe(usdc.balanceOf(alice), amount);
+    }
+
+    function testFuzz_TransferAbovePerTxAlwaysReverts(uint256 amount) public {
+        amount = bound(amount, MAX_PER_TX + 1, type(uint128).max);
+
+        vm.prank(agent);
+        vm.expectRevert(
+            abi.encodeWithSelector(OTTOVault.ExceedsPerTxLimit.selector, amount, MAX_PER_TX)
+        );
+        vault.transfer(alice, amount);
+    }
 }
