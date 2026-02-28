@@ -36,6 +36,11 @@ function loadVaults(): VaultRegistry {
   try { return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8")); } catch { return {}; }
 }
 
+function saveVaults(registry: VaultRegistry): void {
+  mkdirSync(OTTO_DIR, { recursive: true });
+  writeFileSync(USER_VAULTS_PATH, JSON.stringify(registry, null, 2));
+}
+
 // ─── Telegram auth verification ──────────────────────────────────────────────
 
 interface TelegramAuth {
@@ -257,6 +262,34 @@ export function createApp(
       tg_username: entry.tg_username,
       tg_first_name: entry.tg_first_name,
     });
+  });
+
+  // POST /api/vaults  — save deployed vault addresses for a wallet
+  app.post("/api/vaults", (req, res) => {
+    const { address, vaults } = req.body as {
+      address?: string;
+      vaults?: Partial<Record<string, string>>;
+    };
+    if (!address || !vaults || Object.keys(vaults).length === 0) {
+      res.status(400).json({ error: "address and vaults required" });
+      return;
+    }
+
+    const users = loadUsers();
+    const userId = Object.keys(users).find((id) => users[id].eth_address === address.toLowerCase());
+
+    // If user is not registered yet, create a minimal record keyed by address
+    const key = userId ?? address.toLowerCase();
+    if (!userId) {
+      users[key] = { eth_address: address.toLowerCase() };
+      saveUsers(users);
+    }
+
+    const registry = loadVaults();
+    registry[key] = { ...registry[key], ...vaults };
+    saveVaults(registry);
+
+    res.json({ ok: true, user_id: key, vaults: registry[key] });
   });
 
   // GET /api/vaults/:address  — look up deployed vaults by wallet address
