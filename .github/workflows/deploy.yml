@@ -67,6 +67,11 @@ jobs:
             ln -sfn "$OTTO/agent/agent.md" "$WS/agent.md"
             echo "  Workspace synced"
 
+            echo "→ clear stale sessions (force skill rediscovery)"
+            rm -f "$HOME/.openclaw/agents/main/sessions/"*.jsonl
+            rm -f "$HOME/.openclaw/agents/main/sessions/sessions.json"
+            echo "  Sessions cleared"
+
             echo "→ restart openclaw"
             pkill -f "openclaw" 2>/dev/null && sleep 2 || true
 
