@@ -94,10 +94,18 @@ jobs:
       - name: Smoke test
         run: |
           sleep 6
-          ssh -i ~/.ssh/deploy_key ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} \
-            "cd ~/OTTO/agent && source .env && \
-             npx tsx scripts/invoke.ts rebalance_check '{\"min_usdc\":1}' 2>/dev/null \
-             | grep -q 'threshold_usdc' && echo '✓ Agent healthy' || (echo '✗ Smoke test failed' && exit 1)"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'ENDSSH'
+            echo "→ gateway log (last 30 lines):"
+            tail -30 ~/otto.log 2>/dev/null || echo "(no log)"
+            echo ""
+            echo "→ gateway process check:"
+            pgrep -fa "openclaw" || echo "WARNING: no openclaw process found!"
+            echo ""
+            echo "→ smoke test:"
+            cd ~/OTTO/agent && source .env
+            npx tsx scripts/invoke.ts rebalance_check '{"min_usdc":1}' 2>/dev/null \
+              | grep -q 'threshold_usdc' && echo '✓ Agent healthy' || (echo '✗ Smoke test failed' && exit 1)
+          ENDSSH
 
       - name: Notify success
         if: success()
