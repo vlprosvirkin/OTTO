@@ -15,9 +15,11 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 
 const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
 const USERS_PATH = join(OTTO_DIR, "users.json");
+const USER_VAULTS_PATH = join(OTTO_DIR, "user-vaults.json");
 
 type UserRecord = { eth_address?: string; tg_id?: number; tg_username?: string; tg_first_name?: string };
 type UserRegistry = Record<string, UserRecord>;
+type VaultRegistry = Record<string, Partial<Record<string, string>>>;
 
 function loadUsers(): UserRegistry {
   if (!existsSync(USERS_PATH)) return {};
@@ -27,6 +29,11 @@ function loadUsers(): UserRegistry {
 function saveUsers(registry: UserRegistry): void {
   mkdirSync(OTTO_DIR, { recursive: true });
   writeFileSync(USERS_PATH, JSON.stringify(registry, null, 2));
+}
+
+function loadVaults(): VaultRegistry {
+  if (!existsSync(USER_VAULTS_PATH)) return {};
+  try { return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8")); } catch { return {}; }
 }
 
 // ─── Telegram auth verification ──────────────────────────────────────────────
@@ -160,6 +167,27 @@ export function createApp(
       tg_id: entry.tg_id,
       tg_username: entry.tg_username,
       tg_first_name: entry.tg_first_name,
+    });
+  });
+
+  // GET /api/vaults/:address  — look up deployed vaults by wallet address
+  app.get("/api/vaults/:address", (req, res) => {
+    const addr = req.params.address.toLowerCase();
+    const users = loadUsers();
+    const vaultRegistry = loadVaults();
+
+    // Find user_id by eth_address
+    const userId = Object.keys(users).find((id) => users[id].eth_address === addr);
+    if (!userId) {
+      res.json({ found: false, vaults: {} });
+      return;
+    }
+
+    const vaults = vaultRegistry[userId] ?? {};
+    res.json({
+      found: true,
+      user_id: userId,
+      vaults, // { arcTestnet: "0x...", baseSepolia: "0x...", ... }
     });
   });
 

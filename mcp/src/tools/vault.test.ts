@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// ── Env vars (must be set before vault.ts loads) ─────────────────────────────
+process.env.VAULT_ADDRESS_ARC  = "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA";
+process.env.VAULT_ADDRESS_BASE = "0x47C1feaC66381410f5B050c39F67f15BbD058Af1";
+process.env.VAULT_ADDRESS_FUJI = "0x47C1feaC66381410f5B050c39F67f15BbD058Af1";
+
 // ── Mocks (must appear before imports) ───────────────────────────────────────
 
 vi.mock("fs", () => ({

@@ -53,15 +53,20 @@ const EXPLORER_TX: Record<SupportedChain, string> = {
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
 
-// OTTOVault deployed addresses per chain
-// Arc Testnet:    nonce 0 → 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
-// Base Sepolia:   nonce 1 (redeployed with correct USDC) → 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-// Avalanche Fuji: nonce 1 (redeployed with correct USDC) → 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-const DEFAULT_VAULT_ADDRESSES: Record<SupportedChain, string> = {
-  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA",
-  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? "0x47C1feaC66381410f5B050c39F67f15BbD058Af1",
-  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? "0x47C1feaC66381410f5B050c39F67f15BbD058Af1",
+// OTTOVault addresses per chain — loaded from env vars at call time (no hardcoded defaults).
+// Set VAULT_ADDRESS_ARC, VAULT_ADDRESS_BASE, VAULT_ADDRESS_FUJI in .env.
+const VAULT_ENV_KEYS: Record<SupportedChain, string> = {
+  arcTestnet:    "VAULT_ADDRESS_ARC",
+  baseSepolia:   "VAULT_ADDRESS_BASE",
+  avalancheFuji: "VAULT_ADDRESS_FUJI",
 };
+
+function getDefaultVaultAddress(chain: SupportedChain): string {
+  const key = VAULT_ENV_KEYS[chain];
+  const val = process.env[key];
+  if (!val) throw new Error(`Missing required env var: ${key}. Set it in .env`);
+  return val;
+}
 
 // ─── Contract ABI ─────────────────────────────────────────────────────────────
 
@@ -201,7 +206,7 @@ function resolveChain(chain?: string): SupportedChain {
 }
 
 function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string): Address {
-  return (vaultAddress ?? DEFAULT_VAULT_ADDRESSES[chain]) as Address;
+  return (vaultAddress ?? getDefaultVaultAddress(chain)) as Address;
 }
 
 function getPublicClient(chain: SupportedChain) {
@@ -1062,7 +1067,7 @@ export async function handleCreateInvoice(params: CreateInvoiceParams): Promise<
     if (!addr) throw new Error(`No vault for user ${params.user_id} on ${chain}. Deploy one first.`);
     vaultAddr = addr;
   } else {
-    vaultAddr = DEFAULT_VAULT_ADDRESSES[chain];
+    vaultAddr = getDefaultVaultAddress(chain);
   }
 
   // Capture current vault balance as baseline
