@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * CLI bridge: calls arc-wallet-mcp handlers from shell scripts.
+ * CLI bridge: calls OTTO MCP handlers from shell scripts.
  *
  * Uses dynamic imports so modules (especially Supabase) are only
  * loaded when the specific tool is actually called.
@@ -12,7 +12,7 @@
  *   tsx invoke.ts get_gateway_balance '{"address":"0xabc..."}'
  */
 
-// Load .env from arc-openclaw root (works regardless of cwd)
+// Load .env from agent root (works regardless of cwd)
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { readFileSync } from "fs";
@@ -29,7 +29,8 @@ try {
   }
 } catch { /* .env optional */ }
 
-const MCP = resolve(_SCRIPT_DIR, "../../arc-wallet-mcp/src/tools");
+// MCP tools — ../mcp/src/tools (relative to agent/)
+const MCP = resolve(_SCRIPT_DIR, "../../mcp/src/tools");
 
 type AnyArgs = Record<string, unknown>;
 

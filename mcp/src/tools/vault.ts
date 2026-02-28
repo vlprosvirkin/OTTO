@@ -46,13 +46,14 @@ const EXPLORER_TX: Record<SupportedChain, string> = {
   avalancheFuji: "https://testnet.snowtrace.io/tx",
 };
 
-// Same contract address on all three chains — deterministic CREATE (same deployer + nonce)
-const DEPLOYED_VAULT = "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA";
-
+// OTTOVault deployed addresses per chain
+// Arc Testnet:    nonce 0 → 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
+// Base Sepolia:   nonce 1 (redeployed with correct USDC) → 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+// Avalanche Fuji: nonce 1 (redeployed with correct USDC) → 0x47C1feaC66381410f5B050c39F67f15BbD058Af1
 const DEFAULT_VAULT_ADDRESSES: Record<SupportedChain, string> = {
-  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? DEPLOYED_VAULT,
-  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? DEPLOYED_VAULT,
-  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? DEPLOYED_VAULT,
+  arcTestnet:    process.env.VAULT_ADDRESS_ARC  ?? "0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA",
+  baseSepolia:   process.env.VAULT_ADDRESS_BASE ?? "0x47C1feaC66381410f5B050c39F67f15BbD058Af1",
+  avalancheFuji: process.env.VAULT_ADDRESS_FUJI ?? "0x47C1feaC66381410f5B050c39F67f15BbD058Af1",
 };
 
 // ─── Contract ABI ─────────────────────────────────────────────────────────────

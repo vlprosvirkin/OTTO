@@ -5,7 +5,7 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
-TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../arc-wallet-mcp/node_modules/.bin/tsx")"
+TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../mcp/node_modules/.bin/tsx")"
 
 TO="${1:?Usage: vault_transfer.sh <to_address> <amount_usdc> [chain] [vault_address]}"
 AMOUNT="${2:?Missing amount_usdc}"

@@ -1,11 +1,11 @@
 {
-  // OpenClaw config for Arc Wallet Agent
+  // OpenClaw config for OTTO — Autonomous AI Treasury Agent
   // Secrets are read from env vars — never hardcode them here
 
   "ai": {
-    "provider": "openai",
-    "model": "gpt-4o-mini",
-    "apiKey": { "source": "env", "id": "OPENAI_API_KEY" }
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "apiKey": { "source": "env", "id": "CLAUDE_API_KEY" }
   },
 
   "workspace": {
@@ -26,7 +26,8 @@
       "arc-wallet": { "enabled": true },
       "arc-transfer": { "enabled": true },
       "arc-gateway": { "enabled": true },
-      "arc-x402": { "enabled": true }
+      "arc-x402": { "enabled": true },
+      "arc-vault": { "enabled": true }
     }
   }
 }

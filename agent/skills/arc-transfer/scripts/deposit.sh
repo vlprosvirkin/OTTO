@@ -3,7 +3,7 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
-TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../arc-wallet-mcp/node_modules/.bin/tsx")"
+TSX="$(command -v tsx 2>/dev/null || echo "$ROOT/../mcp/node_modules/.bin/tsx")"
 WALLET_ID="${1:?Usage: deposit.sh <wallet_id> <chain> <amount_usdc> [user_id]}"
 CHAIN="${2:?}"
 AMOUNT="${3:?}"
