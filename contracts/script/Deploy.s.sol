@@ -51,12 +51,12 @@ contract DeployOTTOVault is Script {
         vm.startBroadcast();
 
         OTTOVault vault = new OTTOVault(
-            usdc,
             agent,
             maxPerTx,
             dailyLimit,
             whitelist
         );
+        vault.initializeUsdc(usdc);
 
         vm.stopBroadcast();
 

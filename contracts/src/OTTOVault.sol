@@ -30,7 +30,8 @@ contract OTTOVault is ReentrancyGuard {
 
     // ─── State ────────────────────────────────────────────────────────────────
 
-    IERC20 public immutable usdc;
+    IERC20 public usdc;
+    bool private _usdcInitialized;
 
     address public admin;
     address public agent;
@@ -80,6 +81,8 @@ contract OTTOVault is ReentrancyGuard {
     error InsufficientVaultBalance(uint256 requested, uint256 available);
     error ZeroAddress();
     error ZeroAmount();
+    error UsdcAlreadyInitialized();
+    error UsdcNotInitialized();
 
     // ─── Modifiers ────────────────────────────────────────────────────────────
 
@@ -98,32 +101,47 @@ contract OTTOVault is ReentrancyGuard {
         _;
     }
 
+    modifier usdcReady() {
+        if (!_usdcInitialized) revert UsdcNotInitialized();
+        _;
+    }
+
     // ─── Constructor ──────────────────────────────────────────────────────────
 
     /**
-     * @param _usdc              USDC token address
      * @param _agent             OTTO agent address (Circle SCA or EOA)
      * @param _maxPerTx          Max USDC per single transfer (6 decimals, e.g. 10e6 = 10 USDC)
      * @param _dailyLimit        Max USDC per day (6 decimals)
      * @param _whitelistEnabled  Enforce recipient whitelist from the start
      */
     constructor(
-        address _usdc,
         address _agent,
         uint256 _maxPerTx,
         uint256 _dailyLimit,
         bool _whitelistEnabled
     ) {
-        if (_usdc == address(0) || _agent == address(0)) revert ZeroAddress();
+        if (_agent == address(0)) revert ZeroAddress();
         if (_maxPerTx == 0 || _dailyLimit == 0) revert ZeroAmount();
 
-        usdc = IERC20(_usdc);
         admin = msg.sender;
         agent = _agent;
         maxPerTx = _maxPerTx;
         dailyLimit = _dailyLimit;
         whitelistEnabled = _whitelistEnabled;
         dayWindowStart = block.timestamp;
+    }
+
+    /**
+     * @notice Set the USDC token address. Can only be called once, by admin.
+     *         Separated from constructor to enable deterministic CREATE2
+     *         deployment across chains where USDC addresses differ.
+     * @param _usdc USDC token address on this chain
+     */
+    function initializeUsdc(address _usdc) external onlyAdmin {
+        if (_usdcInitialized) revert UsdcAlreadyInitialized();
+        if (_usdc == address(0)) revert ZeroAddress();
+        usdc = IERC20(_usdc);
+        _usdcInitialized = true;
     }
 
     // ─── Agent: Transfer ──────────────────────────────────────────────────────
@@ -140,6 +158,7 @@ contract OTTOVault is ReentrancyGuard {
         external
         onlyAgent
         notPaused
+        usdcReady
         nonReentrant
     {
         if (to == address(0)) revert ZeroAddress();
@@ -185,7 +204,7 @@ contract OTTOVault is ReentrancyGuard {
     /**
      * @notice Deposit USDC into the vault. Anyone can deposit.
      */
-    function deposit(uint256 amount) external nonReentrant {
+    function deposit(uint256 amount) external usdcReady nonReentrant {
         if (amount == 0) revert ZeroAmount();
         usdc.safeTransferFrom(msg.sender, address(this), amount);
         emit Deposit(msg.sender, amount);
@@ -194,7 +213,7 @@ contract OTTOVault is ReentrancyGuard {
     /**
      * @notice Emergency withdraw — admin only. Bypasses agent limits.
      */
-    function withdraw(uint256 amount) external onlyAdmin nonReentrant {
+    function withdraw(uint256 amount) external onlyAdmin usdcReady nonReentrant {
         if (amount == 0) revert ZeroAmount();
         usdc.safeTransfer(admin, amount);
         emit AdminWithdraw(admin, amount);
@@ -262,7 +281,7 @@ contract OTTOVault is ReentrancyGuard {
     /**
      * @notice Current USDC balance held in the vault.
      */
-    function vaultBalance() external view returns (uint256) {
+    function vaultBalance() external view usdcReady returns (uint256) {
         return usdc.balanceOf(address(this));
     }
 
@@ -285,6 +304,7 @@ contract OTTOVault is ReentrancyGuard {
     function canTransfer(address to, uint256 amount)
         external
         view
+        usdcReady
         returns (bool ok, string memory reason)
     {
         if (paused)           return (false, "Vault is paused");
@@ -302,7 +322,7 @@ contract OTTOVault is ReentrancyGuard {
     /**
      * @notice Full vault status in one call.
      */
-    function status() external view returns (
+    function status() external view usdcReady returns (
         uint256 balance_,
         uint256 maxPerTx_,
         uint256 dailyLimit_,

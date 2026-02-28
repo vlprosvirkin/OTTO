@@ -20,6 +20,8 @@ import {
   http,
   isAddress,
   getAddress,
+  keccak256,
+  toHex,
   type Address,
   type Chain,
 } from "viem";
@@ -604,12 +606,43 @@ const VAULT_CONSTRUCTOR_ABI = [
   {
     type: "constructor",
     inputs: [
-      { name: "_usdc", type: "address" },
       { name: "_agent", type: "address" },
       { name: "_maxPerTx", type: "uint256" },
       { name: "_dailyLimit", type: "uint256" },
       { name: "_whitelistEnabled", type: "bool" },
     ],
+  },
+] as const;
+
+const FACTORY_ADDRESS: Address = "0x6bfebb0239d2809682d5115885e138e9eaed0821";
+
+const FACTORY_ABI = [
+  {
+    name: "deploy",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "salt", type: "bytes32" },
+      { name: "usdc", type: "address" },
+      { name: "agent", type: "address" },
+      { name: "maxPerTx", type: "uint256" },
+      { name: "dailyLimit", type: "uint256" },
+      { name: "whitelistEnabled", type: "bool" },
+    ],
+    outputs: [{ name: "vault", type: "address" }],
+  },
+  {
+    name: "computeAddress",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "salt", type: "bytes32" },
+      { name: "agent", type: "address" },
+      { name: "maxPerTx", type: "uint256" },
+      { name: "dailyLimit", type: "uint256" },
+      { name: "whitelistEnabled", type: "bool" },
+    ],
+    outputs: [{ name: "", type: "address" }],
   },
 ] as const;
 
@@ -653,31 +686,42 @@ export async function handleDeployUserVault(params: DeployUserVaultParams): Prom
   const maxPerTxAtomic = BigInt(Math.round(maxPerTxUsdc * 1_000_000));
   const dailyLimitAtomic = BigInt(Math.round(dailyLimitUsdc * 1_000_000));
 
-  // Check if user has registered their own ETH address as admin
-  const users = loadUsers();
-  const userEthAddr = users[user_id]?.eth_address;
+  // Deterministic salt from user_id
+  const salt = keccak256(toHex(user_id));
 
-  const txHash = await client.deployContract({
-    abi: VAULT_CONSTRUCTOR_ABI,
-    bytecode: OTTO_VAULT_BYTECODE,
-    args: [usdcAddr, account.address, maxPerTxAtomic, dailyLimitAtomic, false],
+  // Deploy via factory (CREATE2 — same address on all chains)
+  const txHash = await client.writeContract({
+    address: FACTORY_ADDRESS,
+    abi: FACTORY_ABI,
+    functionName: "deploy",
+    args: [salt, usdcAddr, account.address, maxPerTxAtomic, dailyLimitAtomic, false],
     account,
-    gas: 2_000_000n, // explicit gas to avoid estimation issues on Arc Testnet
+    gas: 3_000_000n,
   });
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
-  const vaultAddr = receipt.contractAddress;
 
-  if (!vaultAddr || receipt.status !== "success") {
-    return JSON.stringify({ success: false, txHash, reason: "Deployment failed or no contract address" });
+  if (receipt.status !== "success") {
+    return JSON.stringify({ success: false, txHash, reason: "Factory deployment failed" });
   }
+
+  // Compute the deterministic vault address
+  const vaultAddr = await publicClient.readContract({
+    address: FACTORY_ADDRESS,
+    abi: FACTORY_ABI,
+    functionName: "computeAddress",
+    args: [salt, account.address, maxPerTxAtomic, dailyLimitAtomic, false],
+  }) as Address;
 
   // Persist mapping
   if (!registry[user_id]) registry[user_id] = {};
   registry[user_id][chain] = vaultAddr;
   saveUserVaults(registry);
 
-  // If user has a registered ETH address, hand admin control over immediately
+  // Factory already transferred admin to agent wallet (msg.sender).
+  // If user has a registered ETH address, hand admin control over to them.
+  const users = loadUsers();
+  const userEthAddr = users[user_id]?.eth_address;
   let transferAdminTxHash: string | undefined;
   let adminAddr = account.address as string;
 

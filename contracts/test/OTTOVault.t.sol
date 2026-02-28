@@ -28,8 +28,10 @@ contract OTTOVaultTest is Test {
 
     function setUp() public {
         usdc  = new MockUSDC();
-        vm.prank(admin);
-        vault = new OTTOVault(address(usdc), agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.startPrank(admin);
+        vault = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vault.initializeUsdc(address(usdc));
+        vm.stopPrank();
 
         // Fund vault with 200 USDC
         usdc.mint(address(vault), 200e6);
@@ -415,31 +417,79 @@ contract OTTOVaultTest is Test {
 
     // ─── Constructor validation ───────────────────────────────────────────────
 
-    function test_ConstructorRejectsZeroUsdcAddress() public {
-        vm.expectRevert(OTTOVault.ZeroAddress.selector);
-        new OTTOVault(address(0), agent, MAX_PER_TX, DAILY_LIMIT, false);
-    }
-
     function test_ConstructorRejectsZeroAgentAddress() public {
         vm.expectRevert(OTTOVault.ZeroAddress.selector);
-        new OTTOVault(address(usdc), address(0), MAX_PER_TX, DAILY_LIMIT, false);
+        new OTTOVault(address(0), MAX_PER_TX, DAILY_LIMIT, false);
     }
 
     function test_ConstructorRejectsZeroMaxPerTx() public {
         vm.expectRevert(OTTOVault.ZeroAmount.selector);
-        new OTTOVault(address(usdc), agent, 0, DAILY_LIMIT, false);
+        new OTTOVault(agent, 0, DAILY_LIMIT, false);
     }
 
     function test_ConstructorRejectsZeroDailyLimit() public {
         vm.expectRevert(OTTOVault.ZeroAmount.selector);
-        new OTTOVault(address(usdc), agent, MAX_PER_TX, 0, false);
+        new OTTOVault(agent, MAX_PER_TX, 0, false);
     }
 
     function test_ConstructorSetsAdminToDeployer() public {
         address deployer = address(0xDE);
-        vm.prank(deployer);
-        OTTOVault v = new OTTOVault(address(usdc), agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.startPrank(deployer);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        v.initializeUsdc(address(usdc));
+        vm.stopPrank();
         assertEq(v.admin(), deployer);
+    }
+
+    // ─── initializeUsdc ─────────────────────────────────────────────────────
+
+    function test_InitializeUsdcSetsAddress() public {
+        vm.startPrank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        v.initializeUsdc(address(usdc));
+        vm.stopPrank();
+        assertEq(address(v.usdc()), address(usdc));
+    }
+
+    function test_InitializeUsdcCannotBeCalledTwice() public {
+        vm.startPrank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        v.initializeUsdc(address(usdc));
+        vm.expectRevert(OTTOVault.UsdcAlreadyInitialized.selector);
+        v.initializeUsdc(address(usdc));
+        vm.stopPrank();
+    }
+
+    function test_OnlyAdminCanInitializeUsdc() public {
+        vm.prank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.prank(hacker);
+        vm.expectRevert(OTTOVault.NotAdmin.selector);
+        v.initializeUsdc(address(usdc));
+    }
+
+    function test_InitializeUsdcRejectsZeroAddress() public {
+        vm.startPrank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.expectRevert(OTTOVault.ZeroAddress.selector);
+        v.initializeUsdc(address(0));
+        vm.stopPrank();
+    }
+
+    function test_TransferRevertsBeforeUsdcInit() public {
+        vm.prank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.prank(agent);
+        vm.expectRevert(OTTOVault.UsdcNotInitialized.selector);
+        v.transfer(alice, 5e6);
+    }
+
+    function test_DepositRevertsBeforeUsdcInit() public {
+        vm.prank(admin);
+        OTTOVault v = new OTTOVault(agent, MAX_PER_TX, DAILY_LIMIT, false);
+        vm.prank(alice);
+        vm.expectRevert(OTTOVault.UsdcNotInitialized.selector);
+        v.deposit(5e6);
     }
 
     // ─── Fuzz ─────────────────────────────────────────────────────────────────
