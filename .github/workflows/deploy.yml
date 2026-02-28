@@ -55,6 +55,11 @@ jobs:
 
             source "$OTTO/agent/.env"
             export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$CLAUDE_API_KEY}"
+
+            echo "→ ensure openclaw config"
+            npx --prefix "$OTTO/agent" openclaw config set gateway.mode local 2>/dev/null || true
+            npx --prefix "$OTTO/agent" openclaw doctor --fix 2>/dev/null || true
+
             nohup npx --prefix "$OTTO/agent" openclaw gateway run \
               >> "$HOME/otto.log" 2>&1 &
             echo "  PID: $!"
