@@ -16,11 +16,15 @@
 import {
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
   http,
+  isAddress,
+  getAddress,
   type Address,
   type Chain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { randomBytes } from "crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { OTTO_VAULT_BYTECODE } from "./vault-bytecode.js";
@@ -108,6 +112,65 @@ const VAULT_ABI = [
       { name: "ok", type: "bool" },
       { name: "reason", type: "string" },
     ],
+  },
+] as const;
+
+// Admin-only functions (for encode_admin_tx and transferAdmin after deployment)
+const VAULT_ADMIN_ABI = [
+  {
+    name: "setLimits",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_maxPerTx", type: "uint256" },
+      { name: "_dailyLimit", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setWhitelist",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "addr", type: "address" },
+      { name: "allowed", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setWhitelistEnabled",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "enabled", type: "bool" }],
+    outputs: [],
+  },
+  {
+    name: "setAgent",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newAgent", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "transferAdmin",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newAdmin", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "setPaused",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "_paused", type: "bool" }],
+    outputs: [],
+  },
+  {
+    name: "withdraw",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
   },
 ] as const;
 
@@ -450,29 +513,72 @@ export async function handleRebalanceCheck(params: RebalanceCheckParams): Promis
   }, null, 2);
 }
 
-// ─── User Vault Registry ────────────────────────────────────────────────────
+// ─── Registry helpers ────────────────────────────────────────────────────────
 
-const USER_VAULTS_PATH = join(
-  process.env.HOME ?? "/tmp",
-  ".otto",
-  "user-vaults.json"
-);
+const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
+const USER_VAULTS_PATH = join(OTTO_DIR, "user-vaults.json");
+const USERS_PATH       = join(OTTO_DIR, "users.json");
+const INVOICES_PATH    = join(OTTO_DIR, "invoices.json");
+
+function ottoDirEnsure(): void {
+  mkdirSync(OTTO_DIR, { recursive: true });
+}
+
+// ── Vault registry ──
 
 type UserVaultRegistry = Record<string, Partial<Record<SupportedChain, string>>>;
 
 function loadUserVaults(): UserVaultRegistry {
   if (!existsSync(USER_VAULTS_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8"));
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8")); } catch { return {}; }
 }
 
 function saveUserVaults(registry: UserVaultRegistry): void {
-  const dir = join(process.env.HOME ?? "/tmp", ".otto");
-  mkdirSync(dir, { recursive: true });
+  ottoDirEnsure();
   writeFileSync(USER_VAULTS_PATH, JSON.stringify(registry, null, 2));
+}
+
+// ── User registry (Telegram user_id → eth_address) ──
+
+type UserRecord = { eth_address?: string };
+type UserRegistry = Record<string, UserRecord>;
+
+function loadUsers(): UserRegistry {
+  if (!existsSync(USERS_PATH)) return {};
+  try { return JSON.parse(readFileSync(USERS_PATH, "utf8")); } catch { return {}; }
+}
+
+function saveUsers(registry: UserRegistry): void {
+  ottoDirEnsure();
+  writeFileSync(USERS_PATH, JSON.stringify(registry, null, 2));
+}
+
+// ── Invoice registry ──
+
+type InvoiceStatus = "pending" | "paid" | "expired";
+
+interface Invoice {
+  invoice_id: string;
+  vault_address: string;
+  chain: SupportedChain;
+  expected_amount_usdc: number;
+  expected_sender?: string;
+  created_at: string;
+  expires_at: string;
+  initial_vault_balance_usdc: number;
+  status: InvoiceStatus;
+}
+
+type InvoiceRegistry = Record<string, Invoice>;
+
+function loadInvoices(): InvoiceRegistry {
+  if (!existsSync(INVOICES_PATH)) return {};
+  try { return JSON.parse(readFileSync(INVOICES_PATH, "utf8")); } catch { return {}; }
+}
+
+function saveInvoices(registry: InvoiceRegistry): void {
+  ottoDirEnsure();
+  writeFileSync(INVOICES_PATH, JSON.stringify(registry, null, 2));
 }
 
 const VAULT_CONSTRUCTOR_ABI = [
@@ -499,7 +605,8 @@ export interface DeployUserVaultParams {
 
 /**
  * Deploy a personal OTTOVault on testnet for a given user (identified by Telegram user_id).
- * The agent wallet is both deployer (admin) and operator.
+ * If the user has registered an ETH address via register_user_address, admin ownership is
+ * immediately transferred to that address so OTTO only acts as agent (limited executor).
  * Default limits: 10 USDC/tx, 100 USDC/day.
  */
 export async function handleDeployUserVault(params: DeployUserVaultParams): Promise<string> {
@@ -527,6 +634,10 @@ export async function handleDeployUserVault(params: DeployUserVaultParams): Prom
   const maxPerTxAtomic = BigInt(Math.round(maxPerTxUsdc * 1_000_000));
   const dailyLimitAtomic = BigInt(Math.round(dailyLimitUsdc * 1_000_000));
 
+  // Check if user has registered their own ETH address as admin
+  const users = loadUsers();
+  const userEthAddr = users[user_id]?.eth_address;
+
   const txHash = await client.deployContract({
     abi: VAULT_CONSTRUCTOR_ABI,
     bytecode: OTTO_VAULT_BYTECODE,
@@ -547,6 +658,23 @@ export async function handleDeployUserVault(params: DeployUserVaultParams): Prom
   registry[user_id][chain] = vaultAddr;
   saveUserVaults(registry);
 
+  // If user has a registered ETH address, hand admin control over immediately
+  let transferAdminTxHash: string | undefined;
+  let adminAddr = account.address as string;
+
+  if (userEthAddr && userEthAddr.toLowerCase() !== account.address.toLowerCase()) {
+    const transferTx = await client.writeContract({
+      address: vaultAddr,
+      abi: VAULT_ADMIN_ABI,
+      functionName: "transferAdmin",
+      args: [userEthAddr as Address],
+      account,
+    });
+    await publicClient.waitForTransactionReceipt({ hash: transferTx, timeout: 30_000 });
+    transferAdminTxHash = transferTx;
+    adminAddr = userEthAddr;
+  }
+
   return JSON.stringify({
     success: true,
     vault: vaultAddr,
@@ -554,6 +682,10 @@ export async function handleDeployUserVault(params: DeployUserVaultParams): Prom
     chainName: CHAIN_NAMES[chain],
     user_id,
     txHash,
+    admin: adminAddr,
+    agent: account.address,
+    admin_controlled_by_user: !!userEthAddr,
+    transfer_admin_tx: transferAdminTxHash ?? null,
     max_per_tx_usdc: maxPerTxUsdc,
     daily_limit_usdc: dailyLimitUsdc,
     explorerUrl: `${EXPLORER_TX[chain]}/${txHash}`,
@@ -599,5 +731,409 @@ export async function handleGetUserVault(params: GetUserVaultParams): Promise<st
     user_id,
     vaults,
     total_deployed: vaults.filter((v) => v.vault).length,
+  }, null, 2);
+}
+
+// ─── User address registration ────────────────────────────────────────────────
+
+export interface RegisterUserAddressParams {
+  user_id: string;
+  eth_address: string;
+}
+
+/**
+ * Register a user's own ETH wallet address.
+ * This address will become the admin of any future vaults deployed for this user.
+ * For existing custodial vaults, call transfer_vault_admin to hand over control.
+ */
+export async function handleRegisterUserAddress(params: RegisterUserAddressParams): Promise<string> {
+  const { user_id, eth_address } = params;
+  if (!user_id) throw new Error("user_id is required");
+  if (!eth_address) throw new Error("eth_address is required");
+
+  // Validate and normalize the address
+  if (!isAddress(eth_address)) {
+    return JSON.stringify({ success: false, reason: `Invalid ETH address: ${eth_address}` });
+  }
+  const checksummed = getAddress(eth_address);
+
+  const users = loadUsers();
+  const previous = users[user_id]?.eth_address;
+  if (!users[user_id]) users[user_id] = {};
+  users[user_id].eth_address = checksummed;
+  saveUsers(users);
+
+  return JSON.stringify({
+    success: true,
+    user_id,
+    eth_address: checksummed,
+    previous_address: previous ?? null,
+    message: previous
+      ? `Updated ETH address from ${previous} to ${checksummed}`
+      : `Registered ETH address ${checksummed} for user ${user_id}`,
+    note: "Future vault deployments will set you as admin. Use transfer_vault_admin to claim existing vaults.",
+  }, null, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GetUserAddressParams {
+  user_id: string;
+}
+
+/**
+ * Get a user's registered ETH wallet address.
+ */
+export async function handleGetUserAddress(params: GetUserAddressParams): Promise<string> {
+  const { user_id } = params;
+  if (!user_id) throw new Error("user_id is required");
+
+  const users = loadUsers();
+  const record = users[user_id];
+
+  return JSON.stringify({
+    user_id,
+    eth_address: record?.eth_address ?? null,
+    registered: !!record?.eth_address,
+  });
+}
+
+// ─── Admin ownership transfer ─────────────────────────────────────────────────
+
+export interface TransferVaultAdminParams {
+  user_id: string;
+  chain?: string;
+  vault_address?: string;
+}
+
+/**
+ * Transfer admin ownership of a user's vault from OTTO wallet to the user's registered ETH address.
+ * Only works if OTTO is currently the admin (e.g. custodial vaults deployed before user registered address).
+ */
+export async function handleTransferVaultAdmin(params: TransferVaultAdminParams): Promise<string> {
+  const { user_id } = params;
+  const chain = resolveChain(params.chain);
+
+  if (!user_id) throw new Error("user_id is required");
+
+  // Get user's registered ETH address
+  const users = loadUsers();
+  const userEthAddr = users[user_id]?.eth_address;
+  if (!userEthAddr) {
+    return JSON.stringify({
+      success: false,
+      reason: "No ETH address registered for this user. Call register_user_address first.",
+    });
+  }
+
+  // Resolve vault address
+  let vaultAddr: Address;
+  if (params.vault_address) {
+    vaultAddr = params.vault_address as Address;
+  } else {
+    const registry = loadUserVaults();
+    const addr = registry[user_id]?.[chain];
+    if (!addr) {
+      return JSON.stringify({
+        success: false,
+        reason: `No vault found for user ${user_id} on ${chain}. Deploy one first.`,
+      });
+    }
+    vaultAddr = addr as Address;
+  }
+
+  const { client, account } = getAgentWalletClient(chain);
+  const publicClient = getPublicClient(chain);
+
+  // Verify OTTO is currently admin
+  const statusResult = (await publicClient.readContract({
+    address: vaultAddr,
+    abi: VAULT_ABI,
+    functionName: "status",
+  })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+  const currentAdmin = statusResult[8]; // admin_ is index 8
+
+  if (currentAdmin.toLowerCase() !== account.address.toLowerCase()) {
+    return JSON.stringify({
+      success: false,
+      reason: `OTTO is not the current admin. Current admin: ${currentAdmin}`,
+      current_admin: currentAdmin,
+    });
+  }
+
+  const txHash = await client.writeContract({
+    address: vaultAddr,
+    abi: VAULT_ADMIN_ABI,
+    functionName: "transferAdmin",
+    args: [userEthAddr as Address],
+    account,
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+
+  return JSON.stringify({
+    success: receipt.status === "success",
+    vault: vaultAddr,
+    chain,
+    new_admin: userEthAddr,
+    previous_admin: account.address,
+    txHash,
+    explorerUrl: `${EXPLORER_TX[chain]}/${txHash}`,
+    message: `Admin transferred to your wallet ${userEthAddr}. OTTO can no longer change vault settings.`,
+  }, null, 2);
+}
+
+// ─── Encode admin transaction (Tier 3 — requires user's wallet signature) ────
+
+export interface EncodeAdminTxParams {
+  function: "setLimits" | "setWhitelist" | "setWhitelistEnabled" | "setAgent" | "transferAdmin" | "setPaused" | "withdraw";
+  chain?: string;
+  vault_address?: string;
+  // setLimits
+  max_per_tx_usdc?: number;
+  daily_limit_usdc?: number;
+  // setWhitelist
+  address?: string;
+  allowed?: boolean;
+  // setWhitelistEnabled / setPaused
+  enabled?: boolean;
+  paused?: boolean;
+  // setAgent / transferAdmin
+  new_address?: string;
+  // withdraw
+  amount_usdc?: number;
+}
+
+const CHAIN_IDS: Record<SupportedChain, number> = {
+  arcTestnet:    5042002,
+  baseSepolia:   84532,
+  avalancheFuji: 43113,
+};
+
+/**
+ * Encode calldata for an admin-only vault operation.
+ * Returns the raw calldata that must be signed by the vault admin (user's own wallet).
+ * OTTO cannot execute admin operations — they require the user's private key.
+ */
+export async function handleEncodeAdminTx(params: EncodeAdminTxParams): Promise<string> {
+  const chain = resolveChain(params.chain);
+  const vaultAddr = resolveVaultAddress(chain, params.vault_address);
+  const fn = params.function;
+
+  let data: `0x${string}`;
+  let description: string;
+
+  switch (fn) {
+    case "setLimits": {
+      const maxPerTx = params.max_per_tx_usdc;
+      const daily = params.daily_limit_usdc;
+      if (maxPerTx == null || daily == null) throw new Error("setLimits requires max_per_tx_usdc and daily_limit_usdc");
+      data = encodeFunctionData({
+        abi: VAULT_ADMIN_ABI,
+        functionName: "setLimits",
+        args: [BigInt(Math.round(maxPerTx * 1_000_000)), BigInt(Math.round(daily * 1_000_000))],
+      });
+      description = `Set per-tx limit to ${maxPerTx} USDC, daily limit to ${daily} USDC`;
+      break;
+    }
+    case "setWhitelist": {
+      const addr = params.address;
+      const allowed = params.allowed;
+      if (!addr || allowed == null) throw new Error("setWhitelist requires address and allowed");
+      if (!isAddress(addr)) throw new Error(`Invalid address: ${addr}`);
+      data = encodeFunctionData({
+        abi: VAULT_ADMIN_ABI,
+        functionName: "setWhitelist",
+        args: [addr as Address, allowed],
+      });
+      description = `${allowed ? "Add" : "Remove"} ${addr} ${allowed ? "to" : "from"} recipient whitelist`;
+      break;
+    }
+    case "setWhitelistEnabled": {
+      const enabled = params.enabled;
+      if (enabled == null) throw new Error("setWhitelistEnabled requires enabled (true/false)");
+      data = encodeFunctionData({ abi: VAULT_ADMIN_ABI, functionName: "setWhitelistEnabled", args: [enabled] });
+      description = `${enabled ? "Enable" : "Disable"} recipient whitelist enforcement`;
+      break;
+    }
+    case "setAgent": {
+      const newAgent = params.new_address;
+      if (!newAgent || !isAddress(newAgent)) throw new Error("setAgent requires a valid new_address");
+      data = encodeFunctionData({ abi: VAULT_ADMIN_ABI, functionName: "setAgent", args: [newAgent as Address] });
+      description = `Replace vault agent with ${newAgent}`;
+      break;
+    }
+    case "transferAdmin": {
+      const newAdmin = params.new_address;
+      if (!newAdmin || !isAddress(newAdmin)) throw new Error("transferAdmin requires a valid new_address");
+      data = encodeFunctionData({ abi: VAULT_ADMIN_ABI, functionName: "transferAdmin", args: [newAdmin as Address] });
+      description = `Transfer admin ownership to ${newAdmin}`;
+      break;
+    }
+    case "setPaused": {
+      const paused = params.paused;
+      if (paused == null) throw new Error("setPaused requires paused (true/false)");
+      data = encodeFunctionData({ abi: VAULT_ADMIN_ABI, functionName: "setPaused", args: [paused] });
+      description = paused ? "Emergency pause — block all agent transfers" : "Unpause vault transfers";
+      break;
+    }
+    case "withdraw": {
+      const amount = params.amount_usdc;
+      if (amount == null) throw new Error("withdraw requires amount_usdc");
+      data = encodeFunctionData({
+        abi: VAULT_ADMIN_ABI,
+        functionName: "withdraw",
+        args: [BigInt(Math.round(amount * 1_000_000))],
+      });
+      description = `Emergency withdraw ${amount} USDC (bypasses agent limits)`;
+      break;
+    }
+    default:
+      throw new Error(`Unknown admin function: ${fn}`);
+  }
+
+  return JSON.stringify({
+    function: fn,
+    description,
+    to: vaultAddr,
+    data,
+    chain,
+    chainId: CHAIN_IDS[chain],
+    instructions: [
+      "This is an admin-only operation. Sign and send this transaction from your wallet (you are the admin).",
+      `Contract: ${vaultAddr} on ${CHAIN_NAMES[chain]}`,
+      "Options: MetaMask → Send Transaction, Frame, ethers.js, cast send --private-key <YOUR_KEY>",
+      `cast send ${vaultAddr} ${data} --rpc-url <RPC> --private-key <YOUR_KEY>`,
+    ].join("\n"),
+  }, null, 2);
+}
+
+// ─── Invoice system (deposit compliance) ─────────────────────────────────────
+
+export interface CreateInvoiceParams {
+  user_id?: string;
+  chain?: string;
+  vault_address?: string;
+  expected_amount_usdc: number;
+  expected_sender?: string;
+  expires_hours?: number;
+}
+
+/**
+ * Create a payment invoice for incoming USDC to a vault.
+ * Returns invoice details including payment instructions.
+ * Use check_invoice_status to verify payment.
+ */
+export async function handleCreateInvoice(params: CreateInvoiceParams): Promise<string> {
+  const chain = resolveChain(params.chain);
+  const { expected_amount_usdc } = params;
+  if (!expected_amount_usdc || expected_amount_usdc <= 0) throw new Error("expected_amount_usdc must be positive");
+
+  // Resolve vault address
+  let vaultAddr: string;
+  if (params.vault_address) {
+    vaultAddr = params.vault_address;
+  } else if (params.user_id) {
+    const registry = loadUserVaults();
+    const addr = registry[params.user_id]?.[chain];
+    if (!addr) throw new Error(`No vault for user ${params.user_id} on ${chain}. Deploy one first.`);
+    vaultAddr = addr;
+  } else {
+    vaultAddr = DEFAULT_VAULT_ADDRESSES[chain];
+  }
+
+  // Capture current vault balance as baseline
+  const publicClient = getPublicClient(chain);
+  const statusResult = (await publicClient.readContract({
+    address: vaultAddr as Address,
+    abi: VAULT_ABI,
+    functionName: "status",
+  })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+  const currentBalanceUsdc = Number(statusResult[0]) / 1_000_000;
+
+  const invoiceId = `INV-${Date.now()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + (params.expires_hours ?? 24) * 3_600_000);
+
+  const invoice: Invoice = {
+    invoice_id: invoiceId,
+    vault_address: vaultAddr,
+    chain,
+    expected_amount_usdc,
+    expected_sender: params.expected_sender,
+    created_at: now.toISOString(),
+    expires_at: expiresAt.toISOString(),
+    initial_vault_balance_usdc: currentBalanceUsdc,
+    status: "pending",
+  };
+
+  const invoices = loadInvoices();
+  invoices[invoiceId] = invoice;
+  saveInvoices(invoices);
+
+  return JSON.stringify({
+    ...invoice,
+    payment_instructions: [
+      `Send ${expected_amount_usdc} USDC to vault ${vaultAddr} on ${CHAIN_NAMES[chain]}`,
+      params.expected_sender ? `Expected sender: ${params.expected_sender}` : "Any sender accepted",
+      `Expires: ${expiresAt.toISOString()}`,
+      `Use check_invoice_status with invoice_id="${invoiceId}" to verify payment`,
+    ].join("\n"),
+  }, null, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CheckInvoiceStatusParams {
+  invoice_id: string;
+}
+
+/**
+ * Check whether a payment invoice has been fulfilled.
+ * Compares current vault balance against baseline captured at invoice creation.
+ */
+export async function handleCheckInvoiceStatus(params: CheckInvoiceStatusParams): Promise<string> {
+  const { invoice_id } = params;
+  if (!invoice_id) throw new Error("invoice_id is required");
+
+  const invoices = loadInvoices();
+  const invoice = invoices[invoice_id];
+  if (!invoice) return JSON.stringify({ success: false, reason: `Invoice ${invoice_id} not found` });
+
+  // Check expiry
+  const now = new Date();
+  if (invoice.status === "pending" && new Date(invoice.expires_at) < now) {
+    invoice.status = "expired";
+    invoices[invoice_id] = invoice;
+    saveInvoices(invoices);
+  }
+
+  if (invoice.status !== "pending") {
+    return JSON.stringify({ ...invoice, message: `Invoice ${invoice.status}` });
+  }
+
+  // Query current vault balance
+  const publicClient = getPublicClient(invoice.chain);
+  const statusResult = (await publicClient.readContract({
+    address: invoice.vault_address as Address,
+    abi: VAULT_ABI,
+    functionName: "status",
+  })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+  const currentBalanceUsdc = Number(statusResult[0]) / 1_000_000;
+  const increase = currentBalanceUsdc - invoice.initial_vault_balance_usdc;
+
+  if (increase >= invoice.expected_amount_usdc - 0.0001) {
+    invoice.status = "paid";
+    invoices[invoice_id] = invoice;
+    saveInvoices(invoices);
+  }
+
+  return JSON.stringify({
+    ...invoice,
+    current_vault_balance_usdc: currentBalanceUsdc,
+    balance_increased_by_usdc: Math.max(0, increase),
+    message: invoice.status === "paid"
+      ? `Invoice paid ✓ Balance increased by ${increase.toFixed(6)} USDC`
+      : `Pending — waiting for ${invoice.expected_amount_usdc} USDC (current increase: ${Math.max(0, increase).toFixed(6)} USDC)`,
   }, null, 2);
 }

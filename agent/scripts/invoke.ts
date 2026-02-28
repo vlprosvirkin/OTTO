@@ -146,6 +146,30 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleGetUserVault } = await import(`${MCP}/vault.js`);
     return handleGetUserVault(a as { user_id: string; chain?: string });
   },
+  register_user_address: async (a) => {
+    const { handleRegisterUserAddress } = await import(`${MCP}/vault.js`);
+    return handleRegisterUserAddress(a as { user_id: string; eth_address: string });
+  },
+  get_user_address: async (a) => {
+    const { handleGetUserAddress } = await import(`${MCP}/vault.js`);
+    return handleGetUserAddress(a as { user_id: string });
+  },
+  transfer_vault_admin: async (a) => {
+    const { handleTransferVaultAdmin } = await import(`${MCP}/vault.js`);
+    return handleTransferVaultAdmin(a as { user_id: string; chain?: string; vault_address?: string });
+  },
+  encode_admin_tx: async (a) => {
+    const { handleEncodeAdminTx } = await import(`${MCP}/vault.js`);
+    return handleEncodeAdminTx(a as AnyArgs & { function: string });
+  },
+  create_invoice: async (a) => {
+    const { handleCreateInvoice } = await import(`${MCP}/vault.js`);
+    return handleCreateInvoice(a as { expected_amount_usdc: number; user_id?: string; chain?: string; vault_address?: string; expected_sender?: string; expires_hours?: number });
+  },
+  check_invoice_status: async (a) => {
+    const { handleCheckInvoiceStatus } = await import(`${MCP}/vault.js`);
+    return handleCheckInvoiceStatus(a as { invoice_id: string });
+  },
 
   // ── x402 (no Supabase) ────────────────────────────────────────────────
   x402_fetch: async (a) => {

@@ -56,6 +56,12 @@ import {
   handleRebalanceCheck,
   handleDeployUserVault,
   handleGetUserVault,
+  handleRegisterUserAddress,
+  handleGetUserAddress,
+  handleTransferVaultAdmin,
+  handleEncodeAdminTx,
+  handleCreateInvoice,
+  handleCheckInvoiceStatus,
 } from "./tools/vault.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
@@ -504,6 +510,128 @@ server.registerTool(
       type: "text" as const,
       text: await handleGetUserVault({ user_id, chain }),
     }],
+  })
+);
+
+server.registerTool(
+  "register_user_address",
+  {
+    title: "Register user's ETH wallet address",
+    description:
+      "Register a Telegram user's own ETH wallet address. " +
+      "Future vault deployments will set this address as admin (owner) instead of OTTO. " +
+      "For existing custodial vaults, use transfer_vault_admin to hand over control. " +
+      "Validates checksum format. Can be called again to update the address.",
+    inputSchema: {
+      user_id: z.string().describe("Telegram user ID (numeric string)"),
+      eth_address: z.string().describe("User's ETH wallet address (0x-prefixed, EIP-55 checksum)"),
+    },
+  },
+  async ({ user_id, eth_address }) => ({
+    content: [{ type: "text" as const, text: await handleRegisterUserAddress({ user_id, eth_address }) }],
+  })
+);
+
+server.registerTool(
+  "get_user_address",
+  {
+    title: "Get user's registered ETH address",
+    description: "Look up the ETH wallet address registered for a Telegram user.",
+    inputSchema: {
+      user_id: z.string().describe("Telegram user ID (numeric string)"),
+    },
+  },
+  async ({ user_id }) => ({
+    content: [{ type: "text" as const, text: await handleGetUserAddress({ user_id }) }],
+  })
+);
+
+server.registerTool(
+  "transfer_vault_admin",
+  {
+    title: "Transfer vault admin to user's wallet",
+    description:
+      "Transfer admin ownership of a user's OTTOVault from OTTO to the user's registered ETH address. " +
+      "Requires the user to have called register_user_address first. " +
+      "After this, OTTO can no longer change vault limits, whitelist, or pause state. " +
+      "Only works if OTTO is currently the admin (custodial vaults).",
+    inputSchema: {
+      user_id: z.string().describe("Telegram user ID (numeric string)"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Chain of the vault (default: arcTestnet)"),
+      vault_address: z.string().optional()
+        .describe("Vault contract address (overrides user registry lookup)"),
+    },
+  },
+  async ({ user_id, chain, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleTransferVaultAdmin({ user_id, chain, vault_address }) }],
+  })
+);
+
+server.registerTool(
+  "encode_admin_tx",
+  {
+    title: "Encode vault admin transaction calldata",
+    description:
+      "Encode calldata for an admin-only OTTOVault operation. " +
+      "Admin operations (setLimits, setWhitelist, setPaused, withdraw, etc.) require the vault admin's private key. " +
+      "Returns the raw calldata that the user must sign and broadcast from their own wallet. " +
+      "OTTO cannot execute these — they are protected at the EVM level.",
+    inputSchema: {
+      function: z.enum(["setLimits", "setWhitelist", "setWhitelistEnabled", "setAgent", "transferAdmin", "setPaused", "withdraw"])
+        .describe("Admin function to encode"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional(),
+      vault_address: z.string().optional(),
+      max_per_tx_usdc: z.number().positive().optional().describe("For setLimits: new per-tx cap in USDC"),
+      daily_limit_usdc: z.number().positive().optional().describe("For setLimits: new daily limit in USDC"),
+      address: z.string().optional().describe("For setWhitelist/setAgent/transferAdmin: target address"),
+      allowed: z.boolean().optional().describe("For setWhitelist: true=add, false=remove"),
+      enabled: z.boolean().optional().describe("For setWhitelistEnabled: true=enable, false=disable"),
+      paused: z.boolean().optional().describe("For setPaused: true=pause, false=unpause"),
+      new_address: z.string().optional().describe("For setAgent/transferAdmin: new agent or admin address"),
+      amount_usdc: z.number().positive().optional().describe("For withdraw: amount in USDC"),
+    },
+  },
+  async (p) => ({
+    content: [{ type: "text" as const, text: await handleEncodeAdminTx(p as Parameters<typeof handleEncodeAdminTx>[0]) }],
+  })
+);
+
+server.registerTool(
+  "create_invoice",
+  {
+    title: "Create payment invoice for vault deposit",
+    description:
+      "Create a payment invoice for incoming USDC to an OTTOVault. " +
+      "Records expected amount and optionally expected sender for compliance tracking. " +
+      "Captures current vault balance as baseline. Use check_invoice_status to verify payment.",
+    inputSchema: {
+      expected_amount_usdc: z.number().positive().describe("Expected payment amount in USDC"),
+      user_id: z.string().optional().describe("Telegram user ID to look up their vault (optional if vault_address given)"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional(),
+      vault_address: z.string().optional().describe("Vault address (overrides user registry lookup)"),
+      expected_sender: z.string().optional().describe("Expected sender address for compliance (optional)"),
+      expires_hours: z.number().positive().optional().describe("Invoice expiry in hours (default: 24)"),
+    },
+  },
+  async (p) => ({
+    content: [{ type: "text" as const, text: await handleCreateInvoice(p as Parameters<typeof handleCreateInvoice>[0]) }],
+  })
+);
+
+server.registerTool(
+  "check_invoice_status",
+  {
+    title: "Check if payment invoice has been fulfilled",
+    description:
+      "Check whether an invoice has been paid by comparing current vault balance to the baseline. " +
+      "Returns status: pending | paid | expired and the balance increase observed.",
+    inputSchema: {
+      invoice_id: z.string().describe("Invoice ID returned by create_invoice"),
+    },
+  },
+  async ({ invoice_id }) => ({
+    content: [{ type: "text" as const, text: await handleCheckInvoiceStatus({ invoice_id }) }],
   })
 );
 

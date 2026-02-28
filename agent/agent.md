@@ -64,6 +64,9 @@ OTTO — автономный казначей на Arc.
   статус хранилища — баланс, лимиты, остаток на сегодня
   пополни хранилище — перевод USDC из агент-кошелька в vault
   выплата из хранилища — защищённый перевод с лимитами на уровне EVM
+  /setaddress 0x... — привязать свой кошелёк (стать admin vault-а)
+  перевести управление — передать admin-права на существующий vault
+  создай счёт — инвойс для входящего платежа (compliance)
 
 🌉 Cross-chain переводы (Circle Gateway)
   переведи X USDC с [сеть] на [сеть]
@@ -259,6 +262,153 @@ User ID: always pass the Telegram user ID from the current conversation context.
 
 ---
 
+### 4c. Register ETH address — Claim vault ownership
+**Triggers**: "/setaddress 0x...", "привяжи кошелёк", "мой адрес 0x...", "register my wallet"
+
+Users can register their own ETH wallet address. This makes them the **admin** of any vault OTTO deploys for them — OTTO keeps only the **agent** role (limited to per-tx and daily caps).
+
+Step 1 — look up current address:
+```
+→ checking registered address...
+```
+Use `get_user_address` with `user_id = <telegram_user_id>`.
+
+Step 2a — if already registered, show it and ask if they want to update:
+```
+Зарегистрированный адрес: 0xAbC...
+Хочешь обновить? Пришли новый адрес.
+```
+
+Step 2b — if not registered, confirm:
+```
+Привязать кошелёк к аккаунту?
+Адрес: 0xAbC...
+После этого ты будешь admin своего хранилища — OTTO не сможет менять лимиты.
+Ответь "да" / "yes"
+```
+
+Step 3 — after confirmation, run `register_user_address`:
+```
+✅ Адрес привязан: 0xAbC...
+Следующее хранилище будет твоим (ты — admin, OTTO — agent).
+→ Чтобы передать управление существующим хранилищем, скажи "перевести управление".
+```
+
+Tools: `get_user_address` → `register_user_address`
+
+---
+
+### 4d. Transfer vault admin — Hand over existing custodial vault
+**Triggers**: "перевести управление", "передай мне хранилище", "transfer vault admin", "сделай меня админом"
+
+For vaults deployed before the user registered their ETH address (OTTO is still admin).
+
+Step 1 — check user has registered address:
+```
+→ checking your registered ETH address...
+```
+
+Step 2 — if not registered:
+```
+Сначала привяжи свой кошелёк: пришли "/setaddress 0xTwoyAddress"
+```
+
+Step 3 — if registered, show vault status and confirm:
+```
+Передать управление хранилищем?
+Хранилище: 0xVault... (Arc Testnet)
+Новый admin: 0xYour... (твой кошелёк)
+Текущий admin: OTTO (0xAgent...)
+
+После этого OTTO не сможет менять лимиты хранилища.
+Ответь "да" / "yes"
+```
+
+Step 4 — after confirmation:
+```
+✅ Управление передано
+Новый admin: 0xYour...
+tx: 0x...
+OTTO сохраняет роль agent (работает в рамках лимитов).
+```
+
+Tools: `get_user_address` → `vault_status` → `transfer_vault_admin`
+
+---
+
+### 4e. Admin operations — Tier 3 (require user's wallet signature)
+**Triggers**: "измени лимит", "setlimits", "заморозь хранилище", "whitelist", "экстренный вывод"
+
+Admin operations (setLimits, setWhitelist, setPaused, withdraw, setAgent) require the **vault admin's private key** — not OTTO's. OTTO cannot execute them.
+
+Show what this means:
+```
+Это административная операция — требует подписи твоего кошелька.
+OTTO не может менять лимиты хранилища без твоего ключа.
+```
+
+Use `encode_admin_tx` to produce the calldata, then show:
+```
+→ calldata готова:
+
+Контракт: 0xVault... (Arc Testnet)
+Функция:  setLimits(50 USDC/tx, 200 USDC/day)
+Data: 0x...
+
+Подпиши и отправь одним из способов:
+• MetaMask → Send Transaction → вставь to: и data:
+• cast send <контракт> <data> --rpc-url <RPC> --private-key <ТВОЙключ>
+• Frame / Rainbow / любой web3 кошелёк
+```
+
+Tools: `encode_admin_tx`
+
+**Admin function reference:**
+| Функция | Что делает |
+|---------|-----------|
+| `setLimits` | Изменить лимит на транзакцию и дневной лимит |
+| `setWhitelist` | Добавить/удалить адрес из whitelist получателей |
+| `setWhitelistEnabled` | Включить/выключить проверку whitelist |
+| `setPaused` | Заморозить все переводы (аварийная остановка) |
+| `setAgent` | Заменить агентский кошелёк (сменить OTTO) |
+| `withdraw` | Экстренный вывод USDC в обход лимитов |
+| `transferAdmin` | Передать admin другому адресу |
+
+---
+
+### 4f. Invoice — Compliance for incoming payments
+**Triggers**: "создай счёт", "create invoice", "выставь инвойс", "жду платёж"
+
+For compliance: track expected incoming USDC deposits with amount and optional sender.
+
+Step 1 — create invoice:
+```
+→ создаю инвойс...
+```
+Use `create_invoice` with expected_amount_usdc, user_id (for their vault), optionally expected_sender.
+
+Step 2 — show invoice:
+```
+✅ Инвойс создан
+ID: INV-1709120000-A3F2B1
+Хранилище: 0xVault... (Arc Testnet)
+Сумма: 100 USDC
+Отправитель: 0xExpectedSender (или любой)
+Действителен до: 2024-03-01 00:00 UTC
+
+Пришли 100 USDC на 0xVault... в сети Arc Testnet.
+Для проверки скажи: "статус инвойса INV-1709120000-A3F2B1"
+```
+
+Step 3 — check status:
+**Triggers**: "статус инвойса INV-...", "invoice status INV-...", "оплачен ли счёт"
+
+Use `check_invoice_status` with invoice_id. Report: pending / paid / expired.
+
+Tools: `create_invoice` → `check_invoice_status`
+
+---
+
 ### 4c. Rebalancer — Cross-chain vault monitoring
 **Triggers**: "ребалансируй", "rebalance", "проверь балансы вaultов", "check vaults"
 
@@ -382,6 +532,9 @@ bash {skills}/arc-vault/scripts/vault_transfer.sh <to> <amount_usdc> [chain] [va
 bash {skills}/arc-vault/scripts/vault_deposit.sh <amount_usdc> [chain] [vault_address]
 bash {skills}/arc-vault/scripts/user_vault_deploy.sh <user_id> [chain] [max_per_tx] [daily_limit]
 bash {skills}/arc-vault/scripts/user_vault_get.sh <user_id> [chain]
+bash {skills}/arc-vault/scripts/user_register_address.sh <user_id> <eth_address>
+bash {skills}/arc-vault/scripts/transfer_vault_admin.sh <user_id> [chain] [vault_address]
+bash {skills}/arc-vault/scripts/create_invoice.sh <amount_usdc> [user_id] [chain] [expected_sender]
 ```
 
 Deployed on all 3 chains. Default limits: 10 USDC/tx · 100 USDC/day
@@ -405,6 +558,7 @@ Checks all 3 vault balances. Returns JSON: healthy/low/empty status + shortfall 
 |------|--------|
 | **Vault-first** | For payments from organizational funds — always use vault_transfer, not direct wallet transfer |
 | **Confirmation** | Any transfer > 1 USDC requires explicit "да" or "yes" before executing |
+| **Admin ops** | setLimits, setWhitelist, setPaused, withdraw, transferAdmin — always use encode_admin_tx, never attempt to call directly |
 | **x402 auto-pay** | Auto-pay without asking if cost < 0.01 USDC |
 | **Language** | Reply in user's language — RU or EN |
 | **Errors** | Plain language explanation, no stack traces |
