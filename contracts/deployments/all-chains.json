@@ -1,0 +1,27 @@
+{
+  "deployedAt": "2026-03-01",
+  "agentAddress": "0xA9A48d73f67b0c820fDE57c8B0639c6f850Ae96e",
+  "chains": {
+    "arcTestnet": {
+      "chainId": 5042002,
+      "type": "factory",
+      "factory": "0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe",
+      "registry": "0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67",
+      "deployers": {
+        "token": "0x1A0D1670405B1F193F384C51647a0b4026D0c34b",
+        "governor": "0x871030f39f386930F3BF951d70371816e9C8b1bd",
+        "vault": "0x07f135206cb3a3a3140e1baBa0953a41214A9825"
+      }
+    },
+    "baseSepolia": {
+      "chainId": 84532,
+      "type": "satellite",
+      "satelliteDeployer": "0xfF6359409df7B9325179B7624d0e47b59E9261a5"
+    },
+    "avalancheFuji": {
+      "chainId": 43113,
+      "type": "satellite",
+      "satelliteDeployer": "0xfF6359409df7B9325179B7624d0e47b59E9261a5"
+    }
+  }
+}
