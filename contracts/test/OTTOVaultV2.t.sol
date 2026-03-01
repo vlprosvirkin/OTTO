@@ -187,46 +187,26 @@ contract OTTOVaultV2Test is Test {
 
     // ─── Revenue Distribution ────────────────────────────────────────────────
 
-    function test_DistributeRevenue_Proportional() public {
+    function test_DistributeRevenue_AutoTransfers() public {
         vm.prank(admin);
         vault.distributeRevenue(100e6);
 
-        // alice 50%, bob 30%, charlie 20%
-        assertEq(vault.pendingRevenue(alice),   50e6);
-        assertEq(vault.pendingRevenue(bob),     30e6);
-        assertEq(vault.pendingRevenue(charlie), 20e6);
+        // alice 50%, bob 30%, charlie 20% — USDC transferred directly
+        assertEq(usdc.balanceOf(alice),   50e6);
+        assertEq(usdc.balanceOf(bob),     30e6);
+        assertEq(usdc.balanceOf(charlie), 20e6);
+        assertEq(vault.totalRevenueDistributed(), 100e6);
     }
 
-    function test_ClaimRevenue() public {
-        vm.prank(admin);
-        vault.distributeRevenue(100e6);
-
-        vm.prank(alice);
-        vault.claimRevenue();
-        assertEq(usdc.balanceOf(alice), 50e6);
-        assertEq(vault.totalRevenueClaimed(), 50e6);
-    }
-
-    function test_DoubleClaim_Reverts() public {
-        vm.prank(admin);
-        vault.distributeRevenue(100e6);
-
-        vm.prank(alice);
-        vault.claimRevenue();
-
-        vm.prank(alice);
-        vm.expectRevert(OTTOVaultV2.ZeroAmount.selector);
-        vault.claimRevenue();
-    }
-
-    function test_MultipleDistributions_Accumulate() public {
+    function test_MultipleDistributions() public {
         vm.prank(admin);
         vault.distributeRevenue(50e6);
 
         vm.prank(admin);
         vault.distributeRevenue(50e6);
 
-        assertEq(vault.pendingRevenue(alice), 50e6);  // 50% of 100
+        assertEq(usdc.balanceOf(alice), 50e6);  // 50% of 100
+        assertEq(vault.totalRevenueDistributed(), 100e6);
     }
 
     // ─── Skim ────────────────────────────────────────────────────────────────

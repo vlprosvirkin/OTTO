@@ -5,12 +5,12 @@
     "arcTestnet": {
       "chainId": 5042002,
       "type": "factory",
-      "factory": "0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe",
-      "registry": "0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67",
+      "factory": "0x6A3B2CA6895529Ee7420A3235d02771027a6eaEd",
+      "registry": "0xd1f790748d667Ffb0fB20508796CE47D4CB61316",
       "deployers": {
-        "token": "0x1A0D1670405B1F193F384C51647a0b4026D0c34b",
-        "governor": "0x871030f39f386930F3BF951d70371816e9C8b1bd",
-        "vault": "0x07f135206cb3a3a3140e1baBa0953a41214A9825"
+        "token": "0x5b7d62448a79E7C5048957C45834ac876720936a",
+        "governor": "0x3F9537B30989c4b3DeE0C495C95249E07655fb5a",
+        "vault": "0x6EB4E22Fd1D07B710bCBbE8eC972a8b5CDC68D11"
       }
     },
     "baseSepolia": {

@@ -375,6 +375,73 @@ export function createApp(
     }
   });
 
+  // POST /api/governance/dacs — register a new DAC after factory deploy
+  app.post("/api/governance/dacs", (req, res) => {
+    const {
+      vault_address, governor_address, share_token_address,
+      shareholders, name, deployer, satellite_vaults,
+    } = req.body as {
+      vault_address?: string;
+      governor_address?: string;
+      share_token_address?: string;
+      shareholders?: string[];
+      name?: string;
+      deployer?: string;
+      satellite_vaults?: Record<string, string>;
+    };
+
+    if (!vault_address || !governor_address || !share_token_address) {
+      res.status(400).json({ error: "vault_address, governor_address, share_token_address required" });
+      return;
+    }
+
+    let gov: Record<string, unknown> = { dacs: {}, members: {} };
+    if (existsSync(GOV_PATH)) {
+      try { gov = JSON.parse(readFileSync(GOV_PATH, "utf8")); } catch { /* start fresh */ }
+    }
+
+    const dacs = (gov.dacs ?? {}) as Record<string, Record<string, unknown>>;
+    const members = (gov.members ?? {}) as Record<string, Record<string, unknown>>;
+
+    // Check if DAC already registered by vault address
+    const existing = Object.entries(dacs).find(
+      ([, d]) => (d.vault_address as string)?.toLowerCase() === vault_address.toLowerCase(),
+    );
+    if (existing) {
+      res.json({ ok: true, id: existing[0], message: "already registered" });
+      return;
+    }
+
+    const id = `dac-${Date.now()}`;
+    dacs[id] = {
+      name: name ?? "OTTO Treasury",
+      vault_address,
+      governor_address,
+      share_token_address,
+      shareholders: shareholders ?? [],
+      satellite_vaults: satellite_vaults ?? {},
+      invite_link: null,
+      chat_id: null,
+      created_at: new Date().toISOString(),
+    };
+
+    // Auto-link deployer as member if they match a known user
+    if (deployer) {
+      const users = loadUsers();
+      const userId = Object.keys(users).find(
+        (uid) => users[uid].eth_address === deployer.toLowerCase(),
+      );
+      if (userId) {
+        members[id] = { [userId]: { eth_address: deployer.toLowerCase() } };
+      }
+    }
+
+    gov.dacs = dacs;
+    gov.members = members;
+    writeFileSync(GOV_PATH, JSON.stringify(gov, null, 2));
+    res.json({ ok: true, id });
+  });
+
   // ─── Free health check ────────────────────────────────────────────────────
 
   app.get("/health", (_req, res) => {

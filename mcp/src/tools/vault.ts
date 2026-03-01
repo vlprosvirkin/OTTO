@@ -125,6 +125,27 @@ const VAULT_ABI = [
   },
 ] as const;
 
+// Satellite vault status ABI (simpler — no governor, no yield, "admin" instead of "ceo")
+const SATELLITE_STATUS_ABI = [
+  {
+    name: "status",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "balance_", type: "uint256" },
+      { name: "maxPerTx_", type: "uint256" },
+      { name: "dailyLimit_", type: "uint256" },
+      { name: "dailySpent_", type: "uint256" },
+      { name: "remainingToday_", type: "uint256" },
+      { name: "whitelistEnabled_", type: "bool" },
+      { name: "paused_", type: "bool" },
+      { name: "agent_", type: "address" },
+      { name: "admin_", type: "address" },
+    ],
+  },
+] as const;
+
 // CEO-only functions (V2: "admin" → "ceo")
 const VAULT_CEO_ABI = [
   {
@@ -309,38 +330,73 @@ export async function handleVaultStatus(params: VaultStatusParams): Promise<stri
   const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
   const client = getPublicClient(chain);
 
-  const result = (await client.readContract({
-    address: vaultAddr,
-    abi: VAULT_ABI,
-    functionName: "status",
-  })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address, Address, number, bigint];
+  // Try V2 ABI first, fall back to satellite ABI
+  try {
+    const result = (await client.readContract({
+      address: vaultAddr,
+      abi: VAULT_ABI,
+      functionName: "status",
+    })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address, Address, number, bigint];
 
-  const [balance, maxPerTx, dailyLimit, dailySpent, remainingToday,
-         whitelistEnabled, paused, agent, ceo, governor, state, totalInvestedInYield] = result;
+    const [balance, maxPerTx, dailyLimit, dailySpent, remainingToday,
+           whitelistEnabled, paused, agent, ceo, governor, state, totalInvestedInYield] = result;
 
-  return [
-    `## OTTOVault V2 Status`,
-    `**Contract**: ${vaultAddr}`,
-    `**Chain**: ${CHAIN_NAMES[chain]}`,
-    `**State**: ${STATE_LABELS[state] ?? "Unknown"}`,
-    ``,
-    `### Balance`,
-    `**Vault Balance**: ${formatUsdc(balance)} USDC`,
-    totalInvestedInYield > 0n ? `**Yield Invested**: ${formatUsdc(totalInvestedInYield)} USDC` : "",
-    ``,
-    `### Spending Limits`,
-    `**Per-tx cap**: ${formatUsdc(maxPerTx)} USDC`,
-    `**Daily limit**: ${formatUsdc(dailyLimit)} USDC`,
-    `**Spent today**: ${formatUsdc(dailySpent)} USDC`,
-    `**Remaining today**: ${formatUsdc(remainingToday)} USDC`,
-    ``,
-    `### Access Control`,
-    `**Agent**: ${agent}`,
-    `**CEO**: ${ceo}`,
-    `**Governor**: ${governor}`,
-    `**Whitelist**: ${whitelistEnabled ? "Enabled" : "Disabled"}`,
-    `**Paused**: ${paused ? "YES — transfers blocked" : "No"}`,
-  ].filter(Boolean).join("\n");
+    return [
+      `## OTTOVault V2 Status`,
+      `**Contract**: ${vaultAddr}`,
+      `**Chain**: ${CHAIN_NAMES[chain]}`,
+      `**State**: ${STATE_LABELS[state] ?? "Unknown"}`,
+      ``,
+      `### Balance`,
+      `**Vault Balance**: ${formatUsdc(balance)} USDC`,
+      totalInvestedInYield > 0n ? `**Yield Invested**: ${formatUsdc(totalInvestedInYield)} USDC` : "",
+      ``,
+      `### Spending Limits`,
+      `**Per-tx cap**: ${formatUsdc(maxPerTx)} USDC`,
+      `**Daily limit**: ${formatUsdc(dailyLimit)} USDC`,
+      `**Spent today**: ${formatUsdc(dailySpent)} USDC`,
+      `**Remaining today**: ${formatUsdc(remainingToday)} USDC`,
+      ``,
+      `### Access Control`,
+      `**Agent**: ${agent}`,
+      `**CEO**: ${ceo}`,
+      `**Governor**: ${governor}`,
+      `**Whitelist**: ${whitelistEnabled ? "Enabled" : "Disabled"}`,
+      `**Paused**: ${paused ? "YES — transfers blocked" : "No"}`,
+    ].filter(Boolean).join("\n");
+  } catch {
+    // Fallback: satellite vault (simpler ABI, no governor/yield)
+    const result = (await client.readContract({
+      address: vaultAddr,
+      abi: SATELLITE_STATUS_ABI,
+      functionName: "status",
+    })) as [bigint, bigint, bigint, bigint, bigint, boolean, boolean, Address, Address];
+
+    const [balance, maxPerTx, dailyLimit, dailySpent, remainingToday,
+           whitelistEnabled, paused, agent, admin] = result;
+
+    return [
+      `## OTTOVault Satellite Status`,
+      `**Contract**: ${vaultAddr}`,
+      `**Chain**: ${CHAIN_NAMES[chain]}`,
+      `**Type**: Satellite (no governance)`,
+      ``,
+      `### Balance`,
+      `**Vault Balance**: ${formatUsdc(balance)} USDC`,
+      ``,
+      `### Spending Limits`,
+      `**Per-tx cap**: ${formatUsdc(maxPerTx)} USDC`,
+      `**Daily limit**: ${formatUsdc(dailyLimit)} USDC`,
+      `**Spent today**: ${formatUsdc(dailySpent)} USDC`,
+      `**Remaining today**: ${formatUsdc(remainingToday)} USDC`,
+      ``,
+      `### Access Control`,
+      `**Agent**: ${agent}`,
+      `**Admin**: ${admin}`,
+      `**Whitelist**: ${whitelistEnabled ? "Enabled" : "Disabled"}`,
+      `**Paused**: ${paused ? "YES — transfers blocked" : "No"}`,
+    ].join("\n");
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

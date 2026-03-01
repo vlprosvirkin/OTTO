@@ -16,7 +16,7 @@ import {OTTOShareToken} from "./OTTOShareToken.sol";
  *   - Governor:  governance-only (setCeo, dissolve)
  *   - Agent:     AI agent with on-chain enforced transfer limits
  *
- * Revenue uses the Synthetix staking-rewards pattern (O(1) per claim).
+ * Revenue: CEO distributes USDC pro-rata to all shareholders in one tx.
  * Dissolution: Active → Dissolving → Dissolved with pro-rata claims.
  */
 contract OTTOVaultV2 is ReentrancyGuard {
@@ -54,14 +54,11 @@ contract OTTOVaultV2 is ReentrancyGuard {
 
     uint256 public totalDeposited;
     uint256 public totalWithdrawn;
-    uint256 public totalRevenueClaimed;
     uint256 public totalInvestedInYield;
 
-    // ─── Revenue Distribution (Synthetix pattern) ────────────────────────────
+    // ─── Revenue Distribution ────────────────────────────────────────────────
 
-    uint256 public rewardPerTokenStored;
-    mapping(address => uint256) public userRewardPerTokenPaid;
-    mapping(address => uint256) public pendingRewards;
+    uint256 public totalRevenueDistributed;
 
     // ─── Dissolution ─────────────────────────────────────────────────────────
 
@@ -78,8 +75,8 @@ contract OTTOVaultV2 is ReentrancyGuard {
     event AgentTransfer(address indexed to, uint256 amount, uint256 dailySpentAfter);
     event CeoTransfer(address indexed to, uint256 amount);
     event CeoWithdraw(address indexed to, uint256 amount);
-    event RevenueDistributed(uint256 amount, uint256 newRewardPerToken);
-    event RevenueClaimed(address indexed shareholder, uint256 amount);
+    event RevenueDistributed(uint256 totalAmount, uint256 shareholderCount);
+    event RevenuePaid(address indexed shareholder, uint256 amount);
     event Skimmed(address indexed to, uint256 amount);
     event DissolutionStarted();
     event DissolutionFinalized(uint256 pool);
@@ -126,16 +123,6 @@ contract OTTOVaultV2 is ReentrancyGuard {
 
     modifier inState(VaultState s) {
         if (vaultState != s) revert InvalidState(s, vaultState);
-        _;
-    }
-
-    modifier updateReward(address account) {
-        if (address(shareToken) != address(0) && shareToken.totalSupply() > 0) {
-            if (account != address(0)) {
-                pendingRewards[account] = pendingRevenue(account);
-                userRewardPerTokenPaid[account] = rewardPerTokenStored;
-            }
-        }
         _;
     }
 
@@ -299,46 +286,33 @@ contract OTTOVaultV2 is ReentrancyGuard {
     function distributeRevenue(uint256 amount)
         external
         onlyCeo
+        usdcReady
         inState(VaultState.Active)
-        updateReward(address(0))
+        nonReentrant
     {
         if (amount == 0) revert ZeroAmount();
 
         uint256 supply = shareToken.totalSupply();
-        rewardPerTokenStored += (amount * 1e18) / supply;
+        address[] memory holders = shareToken.getShareholders();
 
-        emit RevenueDistributed(amount, rewardPerTokenStored);
-    }
+        for (uint256 i = 0; i < holders.length; i++) {
+            uint256 share = shareToken.balanceOf(holders[i]);
+            if (share == 0) continue;
+            uint256 payout = (amount * share) / supply;
+            if (payout > 0) {
+                usdc.safeTransfer(holders[i], payout);
+                emit RevenuePaid(holders[i], payout);
+            }
+        }
 
-    function claimRevenue()
-        external
-        updateReward(msg.sender)
-        nonReentrant
-    {
-        uint256 reward = pendingRewards[msg.sender];
-        if (reward == 0) revert ZeroAmount();
-
-        pendingRewards[msg.sender] = 0;
-        totalRevenueClaimed += reward;
-        usdc.safeTransfer(msg.sender, reward);
-
-        emit RevenueClaimed(msg.sender, reward);
-    }
-
-    function pendingRevenue(address account) public view returns (uint256) {
-        if (address(shareToken) == address(0)) return 0;
-        uint256 supply = shareToken.totalSupply();
-        if (supply == 0) return 0;
-
-        uint256 userShare = shareToken.balanceOf(account);
-        return pendingRewards[account] +
-            (userShare * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18;
+        totalRevenueDistributed += amount;
+        emit RevenueDistributed(amount, holders.length);
     }
 
     // ─── CEO: Skim ───────────────────────────────────────────────────────────
 
     function skim() external onlyCeo inState(VaultState.Active) usdcReady nonReentrant {
-        uint256 expected = totalDeposited - totalWithdrawn - totalRevenueClaimed;
+        uint256 expected = totalDeposited - totalWithdrawn - totalRevenueDistributed;
         uint256 actual = usdc.balanceOf(address(this));
         if (actual <= expected) revert NothingToSkim();
 
