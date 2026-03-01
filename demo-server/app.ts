@@ -313,6 +313,23 @@ export function createApp(
     });
   });
 
+  // DELETE /api/vaults/:address  — clear all deployed vault addresses for a wallet
+  app.delete("/api/vaults/:address", (req, res) => {
+    const addr = req.params.address.toLowerCase();
+    const users = loadUsers();
+    const vaultRegistry = loadVaults();
+
+    const userId = Object.keys(users).find((id) => users[id].eth_address === addr);
+    if (!userId) {
+      res.json({ ok: true, message: "no user found, nothing to clear" });
+      return;
+    }
+
+    delete vaultRegistry[userId];
+    saveVaults(vaultRegistry);
+    res.json({ ok: true, user_id: userId, message: "vaults cleared" });
+  });
+
   // ─── Governance DAC API ──────────────────────────────────────────────────
 
   const GOV_PATH = join(OTTO_DIR, "governance.json");
