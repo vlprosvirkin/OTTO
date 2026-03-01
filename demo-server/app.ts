@@ -5,8 +5,6 @@
 
 import express, { type RequestHandler } from "express";
 import { createHmac, createHash } from "crypto";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -31,8 +29,6 @@ const supabase = supabaseUrl && supabaseKey
   : mockClient;
 
 // ─── User / vault registry (Supabase) ───────────────────────────────────────
-
-const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
 
 
 // ─── Telegram auth verification ──────────────────────────────────────────────
@@ -261,14 +257,17 @@ export function createApp(
 
   // POST /api/vaults  — save deployed vault addresses for a wallet
   app.post("/api/vaults", async (req, res) => {
-    const { address, vaults } = req.body as {
+    const { address, vaults, shareholders } = req.body as {
       address?: string;
       vaults?: Partial<Record<string, string>>;
+      shareholders?: string[];
     };
     if (!address || !vaults || Object.keys(vaults).length === 0) {
       res.status(400).json({ error: "address and vaults required" });
       return;
     }
+
+    const normalizedShareholders = (shareholders ?? []).map((a: string) => a.toLowerCase());
 
     // Find existing user by eth_address, or create minimal record
     const { data: existing } = await supabase
@@ -285,10 +284,24 @@ export function createApp(
       );
     }
 
-    // Upsert each vault
+    // Auto-create otto_users records for shareholders
+    if (normalizedShareholders.length > 0) {
+      const userRows = normalizedShareholders.map((addr: string) => ({
+        user_id: addr,
+        eth_address: addr,
+      }));
+      await supabase.from("otto_users").upsert(userRows, { onConflict: "user_id" });
+    }
+
+    // Upsert each vault with shareholders
     const upserts = Object.entries(vaults).map(([chain, vault_address]) =>
       supabase.from("otto_vaults").upsert(
-        { user_id: key, chain, vault_address: (vault_address as string).toLowerCase() },
+        {
+          user_id: key,
+          chain,
+          vault_address: (vault_address as string).toLowerCase(),
+          shareholders: normalizedShareholders,
+        },
         { onConflict: "user_id,chain" }
       )
     );
@@ -348,54 +361,56 @@ export function createApp(
 
   // ─── Governance DAC API ──────────────────────────────────────────────────
 
-  const GOV_PATH = join(OTTO_DIR, "governance.json");
-
   // GET /api/governance/dacs — list all configured DACs with member counts
-  app.get("/api/governance/dacs", (_req, res) => {
-    if (!existsSync(GOV_PATH)) {
-      res.json({ dacs: [] });
-      return;
-    }
-    try {
-      const raw = JSON.parse(readFileSync(GOV_PATH, "utf8")) as Record<string, unknown>;
-      const dacs = (raw.dacs ?? {}) as Record<string, Record<string, unknown>>;
-      const members = (raw.members ?? {}) as Record<string, Record<string, { eth_address?: string }>>;
+  app.get("/api/governance/dacs", async (_req, res) => {
+    // Load DAC vaults (those with governor_address set)
+    const { data: vaults } = await supabase
+      .from("otto_vaults")
+      .select("vault_address, governor_address, share_token_address, shareholders, name, chat_id, invite_link, created_at")
+      .not("governor_address", "is", null);
 
-      const result = Object.entries(dacs).map(([id, dac]) => {
-        const dacMembers = members[id] ?? {};
-        const shareholders = (dac.shareholders ?? []) as string[];
-        const linkedAddresses = new Set(
-          Object.values(dacMembers).map((m) => (m.eth_address ?? "").toLowerCase())
-        );
-        const allLinked = shareholders.length === 0 ||
-          shareholders.every((s) => linkedAddresses.has(s.toLowerCase()));
+    // Load all DAC members
+    const { data: allMembers } = await supabase
+      .from("otto_dac_members")
+      .select("vault_address, tg_user_id, eth_address");
 
-        return {
-          id,
-          name: dac.name ?? "DAC",
-          vault_address: dac.vault_address,
-          governor_address: dac.governor_address,
-          share_token_address: dac.share_token_address,
-          shareholders,
-          invite_link: dac.invite_link ?? null,
-          chat_id: dac.chat_id ?? null,
-          member_count: Object.keys(dacMembers).length,
-          shareholder_count: shareholders.length,
-          governance_active: allLinked,
-          created_at: dac.created_at ?? null,
-        };
-      });
-      res.json({ dacs: result });
-    } catch {
-      res.json({ dacs: [] });
+    const membersByVault: Record<string, Array<{ eth_address: string }>> = {};
+    for (const m of allMembers ?? []) {
+      const key = m.vault_address.toLowerCase();
+      if (!membersByVault[key]) membersByVault[key] = [];
+      membersByVault[key].push({ eth_address: m.eth_address });
     }
+
+    const result = (vaults ?? []).map((v: any) => {
+      const shareholders = v.shareholders ?? [];
+      const dacMembers = membersByVault[v.vault_address.toLowerCase()] ?? [];
+      const linkedAddresses = new Set(dacMembers.map((m: any) => m.eth_address.toLowerCase()));
+      const allLinked = shareholders.length === 0 ||
+        shareholders.every((s: string) => linkedAddresses.has(s.toLowerCase()));
+
+      return {
+        id: v.vault_address,
+        name: v.name ?? "DAC",
+        vault_address: v.vault_address,
+        governor_address: v.governor_address,
+        share_token_address: v.share_token_address,
+        shareholders,
+        invite_link: v.invite_link ?? null,
+        chat_id: v.chat_id ?? null,
+        member_count: dacMembers.length,
+        shareholder_count: shareholders.length,
+        governance_active: allLinked,
+        created_at: v.created_at ?? null,
+      };
+    });
+    res.json({ dacs: result });
   });
 
   // POST /api/governance/dacs — register a new DAC after factory deploy
   app.post("/api/governance/dacs", async (req, res) => {
     const {
       vault_address, governor_address, share_token_address,
-      shareholders, name, deployer, satellite_vaults,
+      shareholders, name, deployer,
     } = req.body as {
       vault_address?: string;
       governor_address?: string;
@@ -403,7 +418,6 @@ export function createApp(
       shareholders?: string[];
       name?: string;
       deployer?: string;
-      satellite_vaults?: Record<string, string>;
     };
 
     if (!vault_address || !governor_address || !share_token_address) {
@@ -411,37 +425,36 @@ export function createApp(
       return;
     }
 
-    let gov: Record<string, unknown> = { dacs: {}, members: {} };
-    if (existsSync(GOV_PATH)) {
-      try { gov = JSON.parse(readFileSync(GOV_PATH, "utf8")); } catch { /* start fresh */ }
-    }
-
-    const dacs = (gov.dacs ?? {}) as Record<string, Record<string, unknown>>;
-    const members = (gov.members ?? {}) as Record<string, Record<string, unknown>>;
-
-    // Check if DAC already registered by vault address
-    const existing = Object.entries(dacs).find(
-      ([, d]) => (d.vault_address as string)?.toLowerCase() === vault_address.toLowerCase(),
-    );
+    // Check if already registered
+    const { data: existing } = await supabase
+      .from("otto_vaults")
+      .select("vault_address")
+      .eq("vault_address", vault_address.toLowerCase())
+      .not("governor_address", "is", null)
+      .single();
     if (existing) {
-      res.json({ ok: true, id: existing[0], message: "already registered" });
+      res.json({ ok: true, id: vault_address, message: "already registered" });
       return;
     }
 
-    const id = `dac-${Date.now()}`;
-    dacs[id] = {
+    // Update existing otto_vaults row with governance columns, or upsert
+    // The vault row may already exist from POST /api/vaults
+    const userId = deployer?.toLowerCase() ?? vault_address.toLowerCase();
+    await supabase.from("otto_users").upsert(
+      { user_id: userId, eth_address: deployer?.toLowerCase() ?? null },
+      { onConflict: "user_id" }
+    );
+    await supabase.from("otto_vaults").upsert({
+      user_id: userId,
+      chain: "arcTestnet",
+      vault_address: vault_address.toLowerCase(),
+      governor_address: governor_address.toLowerCase(),
+      share_token_address: share_token_address.toLowerCase(),
+      shareholders: (shareholders ?? []).map((s: string) => s.toLowerCase()),
       name: name ?? "OTTO Treasury",
-      vault_address,
-      governor_address,
-      share_token_address,
-      shareholders: shareholders ?? [],
-      satellite_vaults: satellite_vaults ?? {},
-      invite_link: null,
-      chat_id: null,
-      created_at: new Date().toISOString(),
-    };
+    }, { onConflict: "user_id,chain" });
 
-    // Auto-link deployer as member if they match a known user
+    // Auto-link deployer as member
     if (deployer) {
       const { data: userRow } = await supabase
         .from("otto_users")
@@ -449,14 +462,15 @@ export function createApp(
         .eq("eth_address", deployer.toLowerCase())
         .single();
       if (userRow) {
-        members[id] = { [userRow.user_id]: { eth_address: deployer.toLowerCase() } };
+        await supabase.from("otto_dac_members").upsert({
+          vault_address: vault_address.toLowerCase(),
+          tg_user_id: userRow.user_id,
+          eth_address: deployer.toLowerCase(),
+        }, { onConflict: "vault_address,tg_user_id" });
       }
     }
 
-    gov.dacs = dacs;
-    gov.members = members;
-    writeFileSync(GOV_PATH, JSON.stringify(gov, null, 2));
-    res.json({ ok: true, id });
+    res.json({ ok: true, id: vault_address });
   });
 
   // ─── Free health check ────────────────────────────────────────────────────

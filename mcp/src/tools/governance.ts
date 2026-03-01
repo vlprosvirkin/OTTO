@@ -19,8 +19,6 @@ import {
   getAddress,
   type Address,
 } from "viem";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join } from "path";
 import { arcTestnet } from "../lib/circle/gateway-sdk.js";
 import { supabase } from "../lib/supabase/client.js";
 
@@ -148,9 +146,6 @@ const VAULT_STATES = ["Active", "Dissolving", "Dissolved"];
 
 // ─── Storage ─────────────────────────────────────────────────────────────────
 
-const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
-const GOV_PATH = join(OTTO_DIR, "governance.json");
-
 interface GovMember {
   eth_address: string;
   display_name: string;
@@ -177,67 +172,150 @@ interface DacConfig {
   vault_address: string;
   governor_address: string;
   share_token_address: string;
-  shareholders: string[];     // addresses that received shares at deploy
+  shareholders: string[];
   chat_id?: string;
   invite_link?: string;
   created_at: string;
 }
 
 interface GovState {
-  dacs: Record<string, DacConfig>;                       // keyed by vault_address
-  members: Record<string, Record<string, GovMember>>;    // dac_id → { tg_user_id → member }
-  proposals: Record<string, Record<string, GovProposal>>; // dac_id → { proposal_id → proposal }
+  dacs: Record<string, DacConfig>;
+  members: Record<string, Record<string, GovMember>>;
+  proposals: Record<string, Record<string, GovProposal>>;
 }
 
-// Legacy single-DAC format (for migration)
-interface LegacyGovState {
-  dac?: { vault_address: string; governor_address: string; share_token_address: string; chat_id?: string } | null;
-  members?: Record<string, GovMember>;
-  proposals?: Record<string, GovProposal>;
-  // New format fields (if already migrated)
-  dacs?: Record<string, DacConfig>;
-}
+// ── Load full governance state from Supabase ──
 
-function loadGov(): GovState {
-  if (!existsSync(GOV_PATH)) return { dacs: {}, members: {}, proposals: {} };
-  try {
-    const raw = JSON.parse(readFileSync(GOV_PATH, "utf8")) as LegacyGovState;
+async function loadGov(): Promise<GovState> {
+  const state: GovState = { dacs: {}, members: {}, proposals: {} };
 
-    // Already in new format
-    if (raw.dacs) return raw as unknown as GovState;
+  // Load DAC configs from otto_vaults (only rows with governor_address = actual DAC vaults)
+  const { data: vaults } = await supabase
+    .from("otto_vaults")
+    .select("vault_address, governor_address, share_token_address, ceo_address, shareholders, name, chat_id, invite_link, created_at")
+    .not("governor_address", "is", null);
 
-    // Migrate legacy single-DAC format
-    if (raw.dac) {
-      const id = getAddress(raw.dac.vault_address);
-      const migrated: GovState = {
-        dacs: {
-          [id]: {
-            name: "DAC",
-            vault_address: id,
-            governor_address: getAddress(raw.dac.governor_address),
-            share_token_address: getAddress(raw.dac.share_token_address),
-            shareholders: [],
-            ...(raw.dac.chat_id ? { chat_id: raw.dac.chat_id } : {}),
-            created_at: new Date().toISOString(),
-          },
-        },
-        members: { [id]: raw.members ?? {} },
-        proposals: { [id]: raw.proposals ?? {} },
-      };
-      // Save migrated format
-      saveGov(migrated);
-      return migrated;
-    }
-
-    return { dacs: {}, members: {}, proposals: {} };
-  } catch {
-    return { dacs: {}, members: {}, proposals: {} };
+  for (const v of vaults ?? []) {
+    const id = getAddress(v.vault_address);
+    state.dacs[id] = {
+      name: v.name ?? "OTTO Treasury",
+      vault_address: id,
+      governor_address: v.governor_address ?? "",
+      share_token_address: v.share_token_address ?? "",
+      shareholders: v.shareholders ?? [],
+      chat_id: v.chat_id,
+      invite_link: v.invite_link,
+      created_at: v.created_at,
+    };
   }
+
+  // Load members from otto_dac_members
+  const { data: members } = await supabase
+    .from("otto_dac_members")
+    .select("vault_address, tg_user_id, eth_address, display_name, linked_at");
+
+  for (const m of members ?? []) {
+    const id = getAddress(m.vault_address);
+    if (!state.members[id]) state.members[id] = {};
+    state.members[id][m.tg_user_id] = {
+      eth_address: m.eth_address,
+      display_name: m.display_name ?? `User ${m.tg_user_id}`,
+      linked_at: m.linked_at,
+    };
+  }
+
+  // Load proposals + votes
+  const { data: proposals } = await supabase
+    .from("otto_proposals")
+    .select("id, vault_address, action, description, proposer_tg_id, tx_hash, created_at");
+
+  const { data: votes } = await supabase
+    .from("otto_votes")
+    .select("proposal_id, voter_tg_id, support, weight, voted_at");
+
+  const votesByProposal: Record<string, Record<string, GovVote>> = {};
+  for (const v of votes ?? []) {
+    if (!votesByProposal[v.proposal_id]) votesByProposal[v.proposal_id] = {};
+    votesByProposal[v.proposal_id][v.voter_tg_id] = {
+      support: v.support,
+      weight: v.weight,
+      voted_at: v.voted_at,
+    };
+  }
+
+  for (const p of proposals ?? []) {
+    const dacId = getAddress(p.vault_address);
+    if (!state.proposals[dacId]) state.proposals[dacId] = {};
+    state.proposals[dacId][p.id] = {
+      action: p.action,
+      description: p.description,
+      proposer_tg_id: p.proposer_tg_id,
+      created_at: p.created_at,
+      tx_hash: p.tx_hash,
+      votes: votesByProposal[p.id] ?? {},
+    };
+  }
+
+  return state;
 }
 
-function saveGov(state: GovState): void {
-  mkdirSync(OTTO_DIR, { recursive: true });
-  writeFileSync(GOV_PATH, JSON.stringify(state, null, 2));
+// ── Save full governance state to Supabase ──
+
+async function saveGov(state: GovState): Promise<void> {
+  // Save DAC configs → update otto_vaults columns
+  for (const [, dac] of Object.entries(state.dacs)) {
+    await supabase.from("otto_vaults")
+      .update({
+        governor_address: dac.governor_address?.toLowerCase(),
+        share_token_address: dac.share_token_address?.toLowerCase(),
+        shareholders: dac.shareholders,
+        name: dac.name,
+        chat_id: dac.chat_id ?? null,
+        invite_link: dac.invite_link ?? null,
+      })
+      .eq("vault_address", dac.vault_address.toLowerCase());
+  }
+
+  // Save members → upsert otto_dac_members
+  for (const [dacId, dacMembers] of Object.entries(state.members)) {
+    const rows = Object.entries(dacMembers).map(([tgId, m]) => ({
+      vault_address: dacId.toLowerCase(),
+      tg_user_id: tgId,
+      eth_address: m.eth_address.toLowerCase(),
+      display_name: m.display_name,
+      linked_at: m.linked_at,
+    }));
+    if (rows.length > 0) {
+      await supabase.from("otto_dac_members").upsert(rows, { onConflict: "vault_address,tg_user_id" });
+    }
+  }
+
+  // Save proposals → upsert otto_proposals
+  for (const [dacId, dacProposals] of Object.entries(state.proposals)) {
+    for (const [propId, p] of Object.entries(dacProposals)) {
+      await supabase.from("otto_proposals").upsert({
+        id: propId,
+        vault_address: dacId.toLowerCase(),
+        action: p.action,
+        description: p.description,
+        proposer_tg_id: p.proposer_tg_id,
+        tx_hash: p.tx_hash ?? null,
+        created_at: p.created_at,
+      }, { onConflict: "id" });
+
+      // Save votes
+      const voteRows = Object.entries(p.votes).map(([voterId, v]) => ({
+        proposal_id: propId,
+        voter_tg_id: voterId,
+        support: v.support,
+        weight: v.weight,
+        voted_at: v.voted_at,
+      }));
+      if (voteRows.length > 0) {
+        await supabase.from("otto_votes").upsert(voteRows, { onConflict: "proposal_id,voter_tg_id" });
+      }
+    }
+  }
 }
 
 // Sync user to Supabase otto_users table
@@ -353,7 +431,7 @@ export async function handleGovSetup(params: GovSetupParams): Promise<string> {
   })) as bigint;
 
   const id = getAddress(vault_address);
-  const state = loadGov();
+  const state = await loadGov();
 
   state.dacs[id] = {
     name: name ?? "DAC",
@@ -370,7 +448,7 @@ export async function handleGovSetup(params: GovSetupParams): Promise<string> {
   if (!state.members[id]) state.members[id] = {};
   if (!state.proposals[id]) state.proposals[id] = {};
 
-  saveGov(state);
+  await saveGov(state);
 
   return [
     `## DAC Governance Configured`,
@@ -406,7 +484,7 @@ export async function handleGovLink(params: GovLinkParams): Promise<string> {
   if (!user_id) throw new Error("user_id is required");
   if (!eth_address || !isAddress(eth_address)) throw new Error("Valid eth_address is required (0x...)");
 
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
   const client = getPublicClient();
   const addr = getAddress(eth_address);
@@ -446,7 +524,7 @@ export async function handleGovLink(params: GovLinkParams): Promise<string> {
     display_name: display_name ?? `User ${user_id}`,
     linked_at: new Date().toISOString(),
   };
-  saveGov(state);
+  await saveGov(state);
   await syncUserRegistry(user_id, addr);
 
   // Check governance gate status after linking
@@ -475,7 +553,7 @@ export interface GovMembersParams {
 }
 
 export async function handleGovMembers(params?: GovMembersParams): Promise<string> {
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params?.vault_address);
   const members = state.members[id] ?? {};
   const memberIds = Object.keys(members);
@@ -548,7 +626,7 @@ export async function handleGovMyInfo(params: GovMyInfoParams): Promise<string> 
   const { user_id } = params;
   if (!user_id) throw new Error("user_id is required");
 
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
   const members = state.members[id] ?? {};
   const member = members[user_id];
@@ -628,7 +706,7 @@ export async function handleGovPropose(params: GovProposeParams): Promise<string
   if (!action) throw new Error("action is required (setCeo | dissolve)");
   if (!description) throw new Error("description is required");
 
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
 
   // Check governance gate
@@ -683,7 +761,7 @@ export async function handleGovPropose(params: GovProposeParams): Promise<string
     tx_hash: parsed.txHash,
     votes: {},
   };
-  saveGov(state);
+  await saveGov(state);
 
   const totalSupply = (await client.readContract({
     address: dac.share_token_address as Address,
@@ -727,7 +805,7 @@ export async function handleGovVote(params: GovVoteParams): Promise<string> {
     throw new Error("support must be 0 (Against), 1 (For), or 2 (Abstain)");
   }
 
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
 
   // Check governance gate
@@ -782,7 +860,7 @@ export async function handleGovVote(params: GovVoteParams): Promise<string> {
     weight: formatTokens(votes),
     voted_at: new Date().toISOString(),
   };
-  saveGov(state);
+  await saveGov(state);
 
   // Calculate running tally
   const tally = calculateTally(proposal);
@@ -813,7 +891,7 @@ export interface GovTallyParams {
 }
 
 export async function handleGovTally(params: GovTallyParams): Promise<string> {
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
   const proposals = state.proposals[id] ?? {};
 
@@ -900,7 +978,7 @@ export async function handleGovAddMembers(params: GovAddMembersParams): Promise<
 
   if (!memberList || memberList.length === 0) throw new Error("members array is required");
 
-  const state = loadGov();
+  const state = await loadGov();
   const { id, dac } = resolveDac(state, params.vault_address);
   const client = getPublicClient();
 
@@ -951,7 +1029,7 @@ export async function handleGovAddMembers(params: GovAddMembersParams): Promise<
     linked++;
   }
 
-  saveGov(state);
+  await saveGov(state);
 
   const gate = checkGovernanceGate(state, id);
 
@@ -972,7 +1050,7 @@ export async function handleGovAddMembers(params: GovAddMembersParams): Promise<
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function handleGovDacs(): Promise<string> {
-  const state = loadGov();
+  const state = await loadGov();
   const dacIds = Object.keys(state.dacs);
 
   if (dacIds.length === 0) {
@@ -1006,8 +1084,8 @@ export async function handleGovDacs(): Promise<string> {
 // 10. gov_dacs_json — Return DACs as JSON (for API consumption)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function handleGovDacsJson(): string {
-  const state = loadGov();
+export async function handleGovDacsJson(): Promise<string> {
+  const state = await loadGov();
   const dacs = Object.entries(state.dacs).map(([id, dac]) => {
     const members = state.members[id] ?? {};
     const gate = checkGovernanceGate(state, id);

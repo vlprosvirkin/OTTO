@@ -26,8 +26,6 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { randomBytes } from "crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join } from "path";
 import { supabase } from "../lib/supabase/client.js";
 
 import { baseSepolia, avalancheFuji } from "viem/chains";
@@ -262,7 +260,7 @@ async function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string,
         // Found on-chain! Cache vault address + all DAC contracts
         const uid = userId ?? ethAddress.toLowerCase();
         await upsertVault(uid, chain, dac.vault);
-        cacheDacContracts({
+        await cacheDacContracts({
           vault: dac.vault,
           shareToken: dac.shareToken,
           governor: dac.governor,
@@ -658,14 +656,6 @@ export async function handleRebalanceCheck(params: RebalanceCheckParams): Promis
 
 // ─── Registry helpers ────────────────────────────────────────────────────────
 
-const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
-const DAC_CONTRACTS_PATH = join(OTTO_DIR, "dac-contracts.json");
-const INVOICES_PATH    = join(OTTO_DIR, "invoices.json");
-
-function ottoDirEnsure(): void {
-  mkdirSync(OTTO_DIR, { recursive: true });
-}
-
 // ── Vault registry (Supabase) ──
 
 async function getVaultFromDb(userId: string, chain: SupportedChain): Promise<string | null> {
@@ -688,18 +678,17 @@ async function getVaultsForUser(userId: string): Promise<Partial<Record<Supporte
   return result;
 }
 
-async function upsertVault(userId: string, chain: SupportedChain, vaultAddress: string): Promise<void> {
-  await supabase.from("otto_vaults").upsert(
-    { user_id: userId, chain, vault_address: vaultAddress.toLowerCase() },
-    { onConflict: "user_id,chain" }
-  );
+async function upsertVault(userId: string, chain: SupportedChain, vaultAddress: string, shareholders?: string[]): Promise<void> {
+  const row: Record<string, unknown> = { user_id: userId, chain, vault_address: vaultAddress.toLowerCase() };
+  if (shareholders) row.shareholders = shareholders.map(a => a.toLowerCase());
+  await supabase.from("otto_vaults").upsert(row, { onConflict: "user_id,chain" });
 }
 
 async function deleteVaultsForUser(userId: string): Promise<void> {
   await supabase.from("otto_vaults").delete().eq("user_id", userId);
 }
 
-// ── DAC contracts cache (vault → { shareToken, governor, ceo }) ──
+// ── DAC contracts cache (stored in otto_vaults columns) ──
 
 interface DacContracts {
   vault: string;
@@ -708,27 +697,29 @@ interface DacContracts {
   ceo: string;
 }
 
-type DacContractsRegistry = Record<string, DacContracts>; // keyed by vault address (lowercase)
-
-function loadDacContracts(): DacContractsRegistry {
-  if (!existsSync(DAC_CONTRACTS_PATH)) return {};
-  try { return JSON.parse(readFileSync(DAC_CONTRACTS_PATH, "utf8")); } catch { return {}; }
-}
-
-function saveDacContracts(registry: DacContractsRegistry): void {
-  ottoDirEnsure();
-  writeFileSync(DAC_CONTRACTS_PATH, JSON.stringify(registry, null, 2));
-}
-
-function cacheDacContracts(dac: { vault: string; shareToken: string; governor: string; ceo: string }): void {
-  const registry = loadDacContracts();
-  registry[dac.vault.toLowerCase()] = {
-    vault: dac.vault,
-    shareToken: dac.shareToken,
-    governor: dac.governor,
-    ceo: dac.ceo,
+async function getDacContractsFromDb(vaultAddress: string): Promise<DacContracts | null> {
+  const { data } = await supabase
+    .from("otto_vaults")
+    .select("vault_address, governor_address, share_token_address, ceo_address")
+    .eq("vault_address", vaultAddress.toLowerCase())
+    .single();
+  if (!data?.governor_address) return null;
+  return {
+    vault: data.vault_address,
+    shareToken: data.share_token_address,
+    governor: data.governor_address,
+    ceo: data.ceo_address,
   };
-  saveDacContracts(registry);
+}
+
+async function cacheDacContracts(dac: { vault: string; shareToken: string; governor: string; ceo: string }): Promise<void> {
+  await supabase.from("otto_vaults")
+    .update({
+      governor_address: dac.governor.toLowerCase(),
+      share_token_address: dac.shareToken.toLowerCase(),
+      ceo_address: dac.ceo.toLowerCase(),
+    })
+    .eq("vault_address", dac.vault.toLowerCase());
 }
 
 // ── User registry (Supabase) ──
@@ -760,7 +751,7 @@ async function upsertUser(userId: string, record: Partial<UserRecord>): Promise<
   );
 }
 
-// ── Invoice registry ──
+// ── Invoice registry (Supabase) ──
 
 type InvoiceStatus = "pending" | "paid" | "expired";
 
@@ -776,16 +767,42 @@ interface Invoice {
   status: InvoiceStatus;
 }
 
-type InvoiceRegistry = Record<string, Invoice>;
-
-function loadInvoices(): InvoiceRegistry {
-  if (!existsSync(INVOICES_PATH)) return {};
-  try { return JSON.parse(readFileSync(INVOICES_PATH, "utf8")); } catch { return {}; }
+async function getInvoice(invoiceId: string): Promise<Invoice | null> {
+  const { data } = await supabase
+    .from("otto_invoices")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .single();
+  if (!data) return null;
+  return {
+    invoice_id: data.invoice_id,
+    vault_address: data.vault_address,
+    chain: data.chain as SupportedChain,
+    expected_amount_usdc: Number(data.expected_amount_usdc),
+    expected_sender: data.expected_sender,
+    created_at: data.created_at,
+    expires_at: data.expires_at,
+    initial_vault_balance_usdc: Number(data.initial_vault_balance),
+    status: data.status as InvoiceStatus,
+  };
 }
 
-function saveInvoices(registry: InvoiceRegistry): void {
-  ottoDirEnsure();
-  writeFileSync(INVOICES_PATH, JSON.stringify(registry, null, 2));
+async function insertInvoice(invoice: Invoice): Promise<void> {
+  await supabase.from("otto_invoices").insert({
+    invoice_id: invoice.invoice_id,
+    vault_address: invoice.vault_address,
+    chain: invoice.chain,
+    expected_amount_usdc: invoice.expected_amount_usdc,
+    expected_sender: invoice.expected_sender,
+    initial_vault_balance: invoice.initial_vault_balance_usdc,
+    status: invoice.status,
+    created_at: invoice.created_at,
+    expires_at: invoice.expires_at,
+  });
+}
+
+async function updateInvoiceStatus(invoiceId: string, status: InvoiceStatus): Promise<void> {
+  await supabase.from("otto_invoices").update({ status }).eq("invoice_id", invoiceId);
 }
 
 // OTTORegistry — on-chain lookup for user vaults (Arc Testnet)
@@ -861,8 +878,8 @@ export async function handleGetDacContracts(params: GetDacContractsParams): Prom
   // Resolve vault address first
   const vaultAddr = await resolveVaultAddress(chain, params.vault_address, params.user_id, params.eth_address);
 
-  // Check local cache
-  const cached = loadDacContracts()[vaultAddr.toLowerCase()];
+  // Check DB cache
+  const cached = await getDacContractsFromDb(vaultAddr);
   if (cached) {
     return JSON.stringify({
       ...cached,
@@ -883,7 +900,7 @@ export async function handleGetDacContracts(params: GetDacContractsParams): Prom
     }) as { vault: Address; shareToken: Address; governor: Address; ceo: Address; createdAt: bigint };
 
     if (dac.vault && dac.vault !== "0x0000000000000000000000000000000000000000") {
-      cacheDacContracts({
+      await cacheDacContracts({
         vault: dac.vault,
         shareToken: dac.shareToken,
         governor: dac.governor,
@@ -1292,9 +1309,7 @@ export async function handleCreateInvoice(params: CreateInvoiceParams): Promise<
     status: "pending",
   };
 
-  const invoices = loadInvoices();
-  invoices[invoiceId] = invoice;
-  saveInvoices(invoices);
+  await insertInvoice(invoice);
 
   return JSON.stringify({
     ...invoice,
@@ -1321,16 +1336,14 @@ export async function handleCheckInvoiceStatus(params: CheckInvoiceStatusParams)
   const { invoice_id } = params;
   if (!invoice_id) throw new Error("invoice_id is required");
 
-  const invoices = loadInvoices();
-  const invoice = invoices[invoice_id];
+  const invoice = await getInvoice(invoice_id);
   if (!invoice) return JSON.stringify({ success: false, reason: `Invoice ${invoice_id} not found` });
 
   // Check expiry
   const now = new Date();
   if (invoice.status === "pending" && new Date(invoice.expires_at) < now) {
     invoice.status = "expired";
-    invoices[invoice_id] = invoice;
-    saveInvoices(invoices);
+    await updateInvoiceStatus(invoice_id, "expired");
   }
 
   if (invoice.status !== "pending") {
@@ -1349,8 +1362,7 @@ export async function handleCheckInvoiceStatus(params: CheckInvoiceStatusParams)
 
   if (increase >= invoice.expected_amount_usdc - 0.0001) {
     invoice.status = "paid";
-    invoices[invoice_id] = invoice;
-    saveInvoices(invoices);
+    await updateInvoiceStatus(invoice_id, "paid");
   }
 
   return JSON.stringify({
