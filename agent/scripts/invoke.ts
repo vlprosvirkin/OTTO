@@ -216,6 +216,118 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleUsycRedeem } = await import(`${MCP}/usyc.js`);
     return handleUsycRedeem(a as { amount_usyc: number; chain?: string });
   },
+
+  // ── OTTOVault V2 Governance (no Supabase) ─────────────────────────
+  v2_deploy: async (a) => {
+    const { handleVaultV2Deploy } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Deploy(a as { factory_address: string; salt: string; shareholders: string[]; shares_bps: number[]; max_per_tx_usdc?: number; daily_limit_usdc?: number; whitelist_enabled?: boolean });
+  },
+  v2_status: async (a) => {
+    const { handleVaultV2Status } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Status(a as { vault_address: string });
+  },
+  v2_shareholders: async (a) => {
+    const { handleVaultV2Shareholders } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Shareholders(a as { vault_address: string; shareholders: string[] });
+  },
+  v2_distribute_revenue: async (a) => {
+    const { handleVaultV2DistributeRevenue } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2DistributeRevenue(a as { vault_address: string; amount_usdc: number });
+  },
+  v2_claim_revenue: async (a) => {
+    const { handleVaultV2ClaimRevenue } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2ClaimRevenue(a as { vault_address: string });
+  },
+  v2_propose: async (a) => {
+    const { handleVaultV2Propose } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Propose(a as { vault_address: string; governor_address: string; action: "setCeo" | "dissolve"; new_ceo?: string; description: string });
+  },
+  v2_vote: async (a) => {
+    const { handleVaultV2Vote } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Vote(a as { governor_address: string; proposal_id: string; support: number });
+  },
+  v2_execute: async (a) => {
+    const { handleVaultV2Execute } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Execute(a as { vault_address: string; governor_address: string; action: "setCeo" | "dissolve"; new_ceo?: string; description: string });
+  },
+  v2_invest_yield: async (a) => {
+    const { handleVaultV2InvestYield } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2InvestYield(a as { vault_address: string; amount_usdc: number });
+  },
+  v2_redeem_yield: async (a) => {
+    const { handleVaultV2RedeemYield } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2RedeemYield(a as { vault_address: string; amount_usyc: number });
+  },
+  v2_dissolve_status: async (a) => {
+    const { handleVaultV2DissolveStatus } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2DissolveStatus(a as { vault_address: string; shareholders: string[] });
+  },
+  v2_transfer: async (a) => {
+    const { handleVaultV2Transfer } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Transfer(a as { vault_address: string; to: string; amount_usdc: number });
+  },
+  v2_deposit: async (a) => {
+    const { handleVaultV2Deposit } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Deposit(a as { vault_address: string; amount_usdc: number });
+  },
+  v2_whitelist: async (a) => {
+    const { handleVaultV2Whitelist } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Whitelist(a as { vault_address: string; address: string; allowed: boolean });
+  },
+  v2_whitelist_toggle: async (a) => {
+    const { handleVaultV2WhitelistToggle } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2WhitelistToggle(a as { vault_address: string; enabled: boolean });
+  },
+  v2_ceo_transfer: async (a) => {
+    const { handleVaultV2CeoTransfer } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2CeoTransfer(a as { vault_address: string; to: string; amount_usdc: number });
+  },
+  v2_withdraw: async (a) => {
+    const { handleVaultV2Withdraw } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Withdraw(a as { vault_address: string; amount_usdc: number });
+  },
+  v2_set_limits: async (a) => {
+    const { handleVaultV2SetLimits } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2SetLimits(a as { vault_address: string; max_per_tx_usdc: number; daily_limit_usdc: number });
+  },
+  v2_pause: async (a) => {
+    const { handleVaultV2Pause } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Pause(a as { vault_address: string; paused: boolean });
+  },
+  v2_finalize: async (a) => {
+    const { handleVaultV2Finalize } = await import(`${MCP}/vault-v2.js`);
+    return handleVaultV2Finalize(a as { vault_address: string });
+  },
+
+  // ── Chat Governance (no Supabase) ──────────────────────────────────────
+  gov_setup: async (a) => {
+    const { handleGovSetup } = await import(`${MCP}/governance.js`);
+    return handleGovSetup(a as { vault_address: string; governor_address: string; share_token_address: string; chat_id?: string });
+  },
+  gov_link: async (a) => {
+    const { handleGovLink } = await import(`${MCP}/governance.js`);
+    return handleGovLink(a as { user_id: string; eth_address: string; display_name?: string });
+  },
+  gov_members: async () => {
+    const { handleGovMembers } = await import(`${MCP}/governance.js`);
+    return handleGovMembers();
+  },
+  gov_my_info: async (a) => {
+    const { handleGovMyInfo } = await import(`${MCP}/governance.js`);
+    return handleGovMyInfo(a as { user_id: string });
+  },
+  gov_propose: async (a) => {
+    const { handleGovPropose } = await import(`${MCP}/governance.js`);
+    return handleGovPropose(a as { user_id: string; action: "setCeo" | "dissolve"; description: string; new_ceo?: string });
+  },
+  gov_vote: async (a) => {
+    const { handleGovVote } = await import(`${MCP}/governance.js`);
+    return handleGovVote(a as { user_id: string; proposal_id: string; support: number });
+  },
+  gov_tally: async (a) => {
+    const { handleGovTally } = await import(`${MCP}/governance.js`);
+    return handleGovTally(a as { proposal_id?: string });
+  },
 };
 
 async function main() {

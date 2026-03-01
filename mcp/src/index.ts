@@ -75,6 +75,37 @@ import {
   handleUsycDeposit,
   handleUsycRedeem,
 } from "./tools/usyc.js";
+import {
+  handleVaultV2Deploy,
+  handleVaultV2Status,
+  handleVaultV2Shareholders,
+  handleVaultV2DistributeRevenue,
+  handleVaultV2ClaimRevenue,
+  handleVaultV2Propose,
+  handleVaultV2Vote,
+  handleVaultV2Execute,
+  handleVaultV2InvestYield,
+  handleVaultV2RedeemYield,
+  handleVaultV2DissolveStatus,
+  handleVaultV2Transfer,
+  handleVaultV2Deposit,
+  handleVaultV2Whitelist,
+  handleVaultV2WhitelistToggle,
+  handleVaultV2CeoTransfer,
+  handleVaultV2Withdraw,
+  handleVaultV2SetLimits,
+  handleVaultV2Pause,
+  handleVaultV2Finalize,
+} from "./tools/vault-v2.js";
+import {
+  handleGovSetup,
+  handleGovLink,
+  handleGovMembers,
+  handleGovMyInfo,
+  handleGovPropose,
+  handleGovVote,
+  handleGovTally,
+} from "./tools/governance.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
 
@@ -818,6 +849,477 @@ server.tool(
       type: "text" as const,
       text: await handleUsycRedeem({ amount_usyc, chain }),
     }],
+  })
+);
+
+// ─── OTTOVault V2 Governance Tools ────────────────────────────────────────────
+
+server.registerTool(
+  "v2_deploy",
+  {
+    title: "Deploy V2 governance treasury",
+    description:
+      "Deploy a full V2 governance treasury stack (OTTOVaultV2 + OTTOShareToken + OTTOGovernor) " +
+      "via the factory contract. Shareholders receive governance tokens proportional to their BPS. " +
+      "CEO role is assigned to the deployer. Arc Testnet only.",
+    inputSchema: {
+      factory_address: z.string().describe("OTTOVaultFactoryV2 contract address"),
+      salt: z.string().describe("Human-readable salt for deterministic deployment"),
+      shareholders: z.array(z.string()).min(1).describe("Array of shareholder EVM addresses"),
+      shares_bps: z.array(z.number().int().positive()).min(1).describe("Array of basis points per shareholder (must sum to 10000)"),
+      max_per_tx_usdc: z.number().positive().optional().describe("Max USDC per agent transfer (default: 10)"),
+      daily_limit_usdc: z.number().positive().optional().describe("Max USDC per day (default: 100)"),
+      whitelist_enabled: z.boolean().optional().describe("Enable whitelist on deploy (default: false)"),
+    },
+  },
+  async (p) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Deploy(p as Parameters<typeof handleVaultV2Deploy>[0]) }],
+  })
+);
+
+server.tool(
+  "v2_status",
+  [
+    "Get the full status of an OTTOVault V2 governance treasury.",
+    "Returns: USDC balance, yield invested, spending limits, roles (CEO, agent, governor),",
+    "vault state (Active/Dissolving/Dissolved), share token address.",
+    "Use this before any V2 governance operation.",
+  ].join(" "),
+  {
+    vault_address: z.string().describe("OTTOVaultV2 contract address"),
+  },
+  async ({ vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Status({ vault_address }) }],
+  })
+);
+
+server.registerTool(
+  "v2_shareholders",
+  {
+    title: "Get V2 shareholder details",
+    description:
+      "Get detailed shareholder information for a V2 vault: " +
+      "token balance, ownership %, voting power, and pending revenue per holder.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      shareholders: z.array(z.string()).min(1).describe("Array of shareholder addresses to query"),
+    },
+  },
+  async ({ vault_address, shareholders }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Shareholders({ vault_address, shareholders }) }],
+  })
+);
+
+server.registerTool(
+  "v2_distribute_revenue",
+  {
+    title: "Distribute revenue to shareholders",
+    description:
+      "CEO: distribute USDC revenue to all shareholders proportional to their token holdings. " +
+      "Uses the Synthetix staking-rewards pattern — O(1) gas regardless of shareholder count. " +
+      "Shareholders claim with v2_claim_revenue.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      amount_usdc: z.number().positive().describe("Amount of USDC to distribute"),
+    },
+  },
+  async ({ vault_address, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2DistributeRevenue({ vault_address, amount_usdc }) }],
+  })
+);
+
+server.tool(
+  "v2_claim_revenue",
+  [
+    "Claim pending revenue from a V2 vault.",
+    "Transfers accumulated USDC to the caller based on their share token holdings.",
+    "Check v2_shareholders first to see pending amounts.",
+  ].join(" "),
+  {
+    vault_address: z.string().describe("OTTOVaultV2 contract address"),
+  },
+  async ({ vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2ClaimRevenue({ vault_address }) }],
+  })
+);
+
+server.registerTool(
+  "v2_propose",
+  {
+    title: "Create governance proposal",
+    description:
+      "Create a governance proposal to execute an action on the V2 vault. " +
+      "Any shareholder can propose. Supported actions: setCeo (change CEO), dissolve (start dissolution). " +
+      "After creation, shareholders vote with v2_vote. Execute with v2_execute after voting period.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      governor_address: z.string().describe("OTTOGovernor contract address"),
+      action: z.enum(["setCeo", "dissolve"]).describe("Action: setCeo or dissolve"),
+      new_ceo: z.string().optional().describe("New CEO address (required for setCeo action)"),
+      description: z.string().describe("Human-readable proposal description"),
+    },
+  },
+  async (p) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Propose(p as Parameters<typeof handleVaultV2Propose>[0]) }],
+  })
+);
+
+server.registerTool(
+  "v2_vote",
+  {
+    title: "Cast vote on governance proposal",
+    description:
+      "Cast a vote on an active governance proposal. " +
+      "Vote weight is proportional to share token holdings at the snapshot block. " +
+      "Support: 0 = Against, 1 = For, 2 = Abstain. Quorum: 51% of total supply.",
+    inputSchema: {
+      governor_address: z.string().describe("OTTOGovernor contract address"),
+      proposal_id: z.string().describe("Proposal ID (from v2_propose)"),
+      support: z.number().int().min(0).max(2).describe("0=Against, 1=For, 2=Abstain"),
+    },
+  },
+  async ({ governor_address, proposal_id, support }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Vote({ governor_address, proposal_id, support }) }],
+  })
+);
+
+server.registerTool(
+  "v2_execute",
+  {
+    title: "Execute passed governance proposal",
+    description:
+      "Execute a governance proposal that has passed (Succeeded state). " +
+      "Requires the voting period to have ended and quorum + majority reached. " +
+      "This actually applies the action (setCeo or dissolve) on the vault.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      governor_address: z.string().describe("OTTOGovernor contract address"),
+      action: z.enum(["setCeo", "dissolve"]).describe("Action that was proposed"),
+      new_ceo: z.string().optional().describe("New CEO address (for setCeo)"),
+      description: z.string().describe("Exact description from the proposal"),
+    },
+  },
+  async (p) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Execute(p as Parameters<typeof handleVaultV2Execute>[0]) }],
+  })
+);
+
+server.registerTool(
+  "v2_invest_yield",
+  {
+    title: "Invest idle USDC into yield (CEO)",
+    description:
+      "CEO: invest idle vault USDC into yield-generating assets (USYC T-bills) via the configured teller. " +
+      "Requires setYieldStrategy to have been called first. Active state only.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      amount_usdc: z.number().positive().describe("Amount of USDC to invest"),
+    },
+  },
+  async ({ vault_address, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2InvestYield({ vault_address, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_redeem_yield",
+  {
+    title: "Redeem yield back to USDC (CEO)",
+    description:
+      "CEO: redeem yield tokens (USYC) back to USDC via the configured teller. " +
+      "Works in both Active and Dissolving states (needed for consolidation before dissolution).",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      amount_usyc: z.number().positive().describe("Amount of USYC to redeem"),
+    },
+  },
+  async ({ vault_address, amount_usyc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2RedeemYield({ vault_address, amount_usyc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_dissolve_status",
+  {
+    title: "Get dissolution status",
+    description:
+      "Get dissolution status for a V2 vault: vault state, dissolution pool, " +
+      "per-shareholder claimable amounts, and claimed status. " +
+      "Use after dissolve() has been executed to track the dissolution process.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      shareholders: z.array(z.string()).min(1).describe("Array of shareholder addresses"),
+    },
+  },
+  async ({ vault_address, shareholders }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2DissolveStatus({ vault_address, shareholders }) }],
+  })
+);
+
+// ─── V2 Operational Tools ──────────────────────────────────────────────────
+
+server.registerTool(
+  "v2_transfer",
+  {
+    title: "Agent transfer USDC",
+    description:
+      "Agent: transfer USDC from V2 vault to a recipient. " +
+      "Subject to per-tx and daily limits. Pre-checks canTransfer().",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      to: z.string().describe("Recipient address"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, to, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Transfer({ vault_address, to, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_deposit",
+  {
+    title: "Deposit USDC into vault",
+    description:
+      "Deposit USDC into a V2 vault. Automatically approves USDC spend. " +
+      "Blocked if whitelist is enabled and sender is not whitelisted.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      amount_usdc: z.number().positive().describe("Amount of USDC to deposit"),
+    },
+  },
+  async ({ vault_address, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Deposit({ vault_address, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_whitelist",
+  {
+    title: "Add/remove whitelist address",
+    description:
+      "CEO: add or remove an address from the vault whitelist. " +
+      "When whitelist is enabled, only whitelisted addresses can deposit or receive transfers.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      address: z.string().describe("Address to whitelist/unwhitelist"),
+      allowed: z.boolean().describe("true to add, false to remove"),
+    },
+  },
+  async ({ vault_address, address, allowed }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Whitelist({ vault_address, address, allowed }) }],
+  })
+);
+
+server.registerTool(
+  "v2_whitelist_toggle",
+  {
+    title: "Enable/disable whitelist",
+    description: "CEO: enable or disable the whitelist for deposits and transfers.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      enabled: z.boolean().describe("true to enable, false to disable"),
+    },
+  },
+  async ({ vault_address, enabled }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2WhitelistToggle({ vault_address, enabled }) }],
+  })
+);
+
+server.registerTool(
+  "v2_ceo_transfer",
+  {
+    title: "CEO transfer USDC",
+    description:
+      "CEO: transfer USDC from vault to a recipient. Not subject to agent limits. " +
+      "Only works in Active state.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      to: z.string().describe("Recipient address"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, to, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2CeoTransfer({ vault_address, to, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_withdraw",
+  {
+    title: "CEO withdraw USDC",
+    description: "CEO: withdraw USDC from vault to CEO address.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Withdraw({ vault_address, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_set_limits",
+  {
+    title: "Set spending limits",
+    description: "CEO: set per-transaction and daily spending limits for the agent.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      max_per_tx_usdc: z.number().positive().describe("Max USDC per transaction"),
+      daily_limit_usdc: z.number().positive().describe("Daily USDC limit"),
+    },
+  },
+  async ({ vault_address, max_per_tx_usdc, daily_limit_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2SetLimits({ vault_address, max_per_tx_usdc, daily_limit_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "v2_pause",
+  {
+    title: "Pause/unpause vault",
+    description: "CEO: pause or unpause the vault. When paused, agent transfers are blocked.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+      paused: z.boolean().describe("true to pause, false to unpause"),
+    },
+  },
+  async ({ vault_address, paused }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Pause({ vault_address, paused }) }],
+  })
+);
+
+server.registerTool(
+  "v2_finalize",
+  {
+    title: "Finalize dissolution & auto-distribute",
+    description:
+      "Finalize a dissolution: freezes share tokens and automatically distributes " +
+      "all remaining USDC pro-rata to every shareholder. No manual claiming needed. " +
+      "Anyone can call this once vault is in Dissolving state.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOVaultV2 contract address"),
+    },
+  },
+  async ({ vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleVaultV2Finalize({ vault_address }) }],
+  })
+);
+
+// ─── Chat Governance Tools ──────────────────────────────────────────────────
+
+server.tool(
+  "gov_setup",
+  [
+    "Configure a DAC (Decentralized Autonomous Company) for chat-based governance.",
+    "Sets the V2 vault, governor, and share token addresses.",
+    "Must be called once before any other gov_* tool.",
+  ].join(" "),
+  {
+    vault_address: z.string().describe("OTTOVaultV2 contract address"),
+    governor_address: z.string().describe("OTTOGovernor contract address"),
+    share_token_address: z.string().describe("OTTOShareToken contract address"),
+    chat_id: z.string().optional().describe("Telegram group chat ID (optional)"),
+  },
+  async ({ vault_address, governor_address, share_token_address, chat_id }) => ({
+    content: [{ type: "text" as const, text: await handleGovSetup({ vault_address, governor_address, share_token_address, chat_id }) }],
+  })
+);
+
+server.tool(
+  "gov_link",
+  [
+    "Link a Telegram user to their on-chain wallet for DAC governance.",
+    "Verifies the address holds share tokens. Determines role (CEO/Shareholder).",
+    "After linking, the user can propose and vote via chat.",
+  ].join(" "),
+  {
+    user_id: z.string().describe("Telegram user ID (numeric string)"),
+    eth_address: z.string().describe("User's ETH wallet address (0x-prefixed)"),
+    display_name: z.string().optional().describe("User's display name in chat"),
+  },
+  async ({ user_id, eth_address, display_name }) => ({
+    content: [{ type: "text" as const, text: await handleGovLink({ user_id, eth_address, display_name }) }],
+  })
+);
+
+server.tool(
+  "gov_members",
+  [
+    "List all linked DAC members with their on-chain roles, share token balances,",
+    "and voting power. Reads live data from the ShareToken contract.",
+  ].join(" "),
+  {},
+  async () => ({
+    content: [{ type: "text" as const, text: await handleGovMembers() }],
+  })
+);
+
+server.tool(
+  "gov_my_info",
+  [
+    "Show a specific user's governance info: wallet, role, shares, voting power,",
+    "and vote history across all proposals. User must be linked first.",
+  ].join(" "),
+  {
+    user_id: z.string().describe("Telegram user ID"),
+  },
+  async ({ user_id }) => ({
+    content: [{ type: "text" as const, text: await handleGovMyInfo({ user_id }) }],
+  })
+);
+
+server.tool(
+  "gov_propose",
+  [
+    "Create a governance proposal from chat.",
+    "The proposer must be a linked shareholder with share tokens.",
+    "Creates an on-chain proposal via the OTTOGovernor contract.",
+    "Supported actions: setCeo (replace CEO), dissolve (start dissolution).",
+    "After creation, other members vote by replying FOR or AGAINST.",
+  ].join(" "),
+  {
+    user_id: z.string().describe("Telegram user ID of the proposer"),
+    action: z.enum(["setCeo", "dissolve"]).describe("Governance action"),
+    description: z.string().describe("Human-readable proposal description"),
+    new_ceo: z.string().optional().describe("New CEO address (required for setCeo)"),
+  },
+  async ({ user_id, action, description, new_ceo }) => ({
+    content: [{ type: "text" as const, text: await handleGovPropose({ user_id, action, description, new_ceo }) }],
+  })
+);
+
+server.tool(
+  "gov_vote",
+  [
+    "Cast a vote on an active governance proposal from chat.",
+    "One vote per member, weighted by share token holdings.",
+    "Support: 0 = Against, 1 = For, 2 = Abstain.",
+    "Returns updated vote tally after recording the vote.",
+  ].join(" "),
+  {
+    user_id: z.string().describe("Telegram user ID of the voter"),
+    proposal_id: z.string().describe("On-chain proposal ID"),
+    support: z.number().int().min(0).max(2).describe("0=Against, 1=For, 2=Abstain"),
+  },
+  async ({ user_id, proposal_id, support }) => ({
+    content: [{ type: "text" as const, text: await handleGovVote({ user_id, proposal_id, support }) }],
+  })
+);
+
+server.tool(
+  "gov_tally",
+  [
+    "Get the current vote tally for a governance proposal.",
+    "Shows FOR/AGAINST/ABSTAIN percentages, voter list, and who hasn't voted yet.",
+    "If no proposal_id is given, shows the most recent proposal.",
+  ].join(" "),
+  {
+    proposal_id: z.string().optional().describe("Proposal ID (defaults to most recent)"),
+  },
+  async ({ proposal_id }) => ({
+    content: [{ type: "text" as const, text: await handleGovTally({ proposal_id }) }],
   })
 );
 

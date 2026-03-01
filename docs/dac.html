@@ -347,7 +347,7 @@
     .arch-grid {
       display:grid;
       grid-template-columns: 260px 1fr 420px 1fr 300px;
-      grid-template-rows: 90px 40px 120px 120px 50px 120px 50px 110px 100px;
+      grid-template-rows: auto 40px auto auto 50px auto 50px auto 40px auto 20px;
       grid-template-areas:
         ".          .     guardian   .        .        "
         ".          .     g2pool     .        .        "
@@ -357,6 +357,8 @@
         "lp         .     usyc      .        payees   "
         "lp2v       .     u2h       .        oracles  "
         "voting     v2c   config    .        oracles  "
+        "v2o        .     .         .        .        "
+        "otto       otto  otto      .        .        "
         ".          .     .         .        .        ";
       align-items: start;
       justify-items: stretch;
@@ -433,6 +435,10 @@
     .n.oracles { border-color: rgba(255,255,255,0.08); animation-delay:.5s; }
     .n.oracles:hover { box-shadow: 0 0 25px rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.15); }
 
+    .n.otto { border-color: rgba(0,206,201,0.3); animation-delay:.55s; background: linear-gradient(135deg, rgba(108,92,231,0.08), rgba(0,206,201,0.06)); }
+    .n.otto:hover { box-shadow: 0 0 50px rgba(0,206,201,0.12); border-color:rgba(0,206,201,0.5); }
+    .n.otto .n-title { background:linear-gradient(135deg,#a78bfa,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent; font-size:1.05rem; }
+
     /* ── Connection lines (grid gaps) ── */
     .conn {
       display:flex; align-items:center; justify-content:center; position:relative;
@@ -469,6 +475,123 @@
     }
     .arch-legend-item .ln {
       width:24px; height:2px; border-radius:1px;
+    }
+
+    /* ═══════ OTTO Governance Section ═══════ */
+    .otto-gov {
+      position: relative;
+      background: linear-gradient(135deg, rgba(108,92,231,0.06), rgba(0,206,201,0.04));
+      border: 1px solid rgba(108,92,231,0.2);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      margin-bottom: 56px;
+    }
+    .otto-gov::before {
+      content: 'OTTO';
+      position: absolute;
+      top: -12px;
+      left: 24px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 4px 14px;
+      border-radius: 4px;
+    }
+    .otto-gov h3 {
+      color: #fff;
+      font-size: 1.2rem;
+      margin-top: 4px;
+    }
+    .otto-gov .flow {
+      background: rgba(4,6,14,0.6);
+    }
+    .otto-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .otto-step-card {
+      background: rgba(4,6,14,0.5);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .otto-step-card .os-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .otto-step-card h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--accent2);
+      margin-bottom: 4px;
+    }
+    .otto-step-card p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.5;
+    }
+    .otto-demo {
+      background: rgba(4,6,14,0.5);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 16px;
+    }
+    .otto-demo h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .otto-msg {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .otto-msg .avatar {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .otto-msg .avatar.user { background: var(--accent); }
+    .otto-msg .avatar.bot { background: var(--accent2); color: #04060e; }
+    .otto-msg .avatar.voter { background: rgba(85,239,196,0.2); color: #55efc4; }
+    .otto-msg .bubble {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      color: var(--text);
+      line-height: 1.5;
+      max-width: 500px;
+    }
+    .otto-msg .bubble code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--accent2);
     }
 
     @media (max-width: 1100px) {
@@ -695,6 +818,250 @@
     </div>
   </section>
 
+  <!-- OTTO Chat Governance -->
+  <section>
+    <h2>Chat-Based Governance with OTTO</h2>
+    <p>On-chain governance is powerful but creates friction: users need wallets, gas, and must navigate dApp UIs to vote. <strong>OTTO eliminates this friction</strong> by acting as a governance relay inside a Telegram group chat where all corporation participants communicate.</p>
+
+    <div class="otto-gov">
+      <h3>How It Works</h3>
+      <p>OTTO is added to the corporation's Telegram group chat as a bot. All participants &mdash; investors, manager, guardian &mdash; interact in the same chat. OTTO recognizes each user by their Telegram ID, maps them to on-chain wallets, and tracks their roles and voting weight in real time.</p>
+
+      <div class="otto-steps">
+        <div class="otto-step-card">
+          <div class="os-num">1</div>
+          <h4>Wallet Linking</h4>
+          <p>Each participant sends <code>/link 0x...</code> in the group or DM. OTTO verifies ownership via signature challenge and binds Telegram&nbsp;ID&nbsp;&harr;&nbsp;wallet address.</p>
+        </div>
+        <div class="otto-step-card">
+          <div class="os-num">2</div>
+          <h4>Role &amp; Share Sync</h4>
+          <p>OTTO reads the LP Token contract to determine each linked user's voting weight and role (investor, manager, guardian). Updated automatically on every deposit/withdrawal.</p>
+        </div>
+        <div class="otto-step-card">
+          <div class="os-num">3</div>
+          <h4>Propose via Chat</h4>
+          <p>Any eligible participant types a proposal in plain language. OTTO parses it, validates eligibility, creates an on-chain proposal, and posts a vote card in the group.</p>
+        </div>
+        <div class="otto-step-card">
+          <div class="os-num">4</div>
+          <h4>Vote via Reply</h4>
+          <p>Participants vote by replying to OTTO's vote card with a single message. One message = one vote, weighted by LP token share. No wallet popup, no gas.</p>
+        </div>
+      </div>
+
+      <div class="flow">Participant writes proposal in Telegram
+&rarr; OTTO validates eligibility (role + min LP share)
+&rarr; Creates on-chain proposal via Voting contract
+&rarr; Posts vote card in group chat
+&rarr; Participants reply to vote (FOR / AGAINST)
+&rarr; OTTO records votes with LP-token weighting
+&rarr; Quorum reached? &rarr; OTTO executes on-chain
+&rarr; Posts result summary to the group</div>
+
+      <p style="margin-top: 16px;"><strong>Delegation model:</strong> participants delegate voting authority to OTTO's operator wallet. OTTO submits votes on-chain on behalf of each user, using the delegated authority. This avoids the need for each participant to sign individual transactions.</p>
+
+      <p><strong>What OTTO tracks per user:</strong></p>
+      <ul class="constraints">
+        <li><strong>Telegram ID</strong> &mdash; unique identifier in the group chat</li>
+        <li><strong>Wallet address</strong> &mdash; linked and verified via signature</li>
+        <li><strong>Role</strong> &mdash; investor, manager, or guardian (read from contracts)</li>
+        <li><strong>LP token balance</strong> &mdash; determines voting weight</li>
+        <li><strong>Vote history</strong> &mdash; all past votes for transparency and audit</li>
+      </ul>
+
+      <p><strong>What participants can do in chat:</strong></p>
+      <ul class="constraints">
+        <li><strong>Investors</strong> &mdash; propose manager replacement, budget changes, whitelist edits; vote on all proposals</li>
+        <li><strong>Manager</strong> &mdash; propose any action; cannot vote on their own replacement</li>
+        <li><strong>Guardian</strong> &mdash; trigger emergency stop directly via command</li>
+        <li><strong>Anyone</strong> &mdash; ask OTTO for treasury status, balances, active proposals, vote results</li>
+      </ul>
+
+      <div class="otto-demo">
+        <h4>Demo: Chat Governance Flow</h4>
+        <div class="otto-msg">
+          <div class="avatar user">AL</div>
+          <div class="bubble"><code>/propose</code> Replace the current manager with <code>0xBob...1234</code> &mdash; not meeting quarterly targets</div>
+        </div>
+        <div class="otto-msg">
+          <div class="avatar bot">O</div>
+          <div class="bubble">
+            <strong>Proposal #7 created</strong><br>
+            Action: Replace Manager &rarr; <code>0xBob...1234</code><br>
+            Proposed by: Alice (14.2% voting power)<br>
+            Quorum: 51% &middot; Deadline: 48h<br><br>
+            Reply <strong>FOR</strong> or <strong>AGAINST</strong> to vote.
+          </div>
+        </div>
+        <div class="otto-msg">
+          <div class="avatar voter">CH</div>
+          <div class="bubble">FOR</div>
+        </div>
+        <div class="otto-msg">
+          <div class="avatar voter">DK</div>
+          <div class="bubble">FOR</div>
+        </div>
+        <div class="otto-msg">
+          <div class="avatar bot">O</div>
+          <div class="bubble">
+            <strong>Proposal #7 passed</strong> &check;<br>
+            Result: 67.3% FOR (quorum: 51%)<br>
+            Executing on-chain: Manager replaced &rarr; <code>0xBob...1234</code><br>
+            Tx: <code>0xabc...def</code>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="margin-top: 28px;">Implementation Specification</h3>
+
+      <p><strong>1. Bot Setup &amp; Group Integration</strong></p>
+      <ul class="constraints">
+        <li>OTTO runs as a Telegram Bot (via BotFather) added to the corporation's group chat</li>
+        <li>Bot requires <code>admin</code> permissions to read all messages and manage pinned posts</li>
+        <li>Each DAC pool address is bound to exactly one Telegram group (<code>poolAddress &harr; chatId</code>)</li>
+        <li>OTTO listens to all messages but only processes commands (<code>/link</code>, <code>/propose</code>, <code>/status</code>, <code>/emergency</code>) and vote replies</li>
+        <li>Regular conversation between participants is unaffected &mdash; OTTO stays silent unless addressed</li>
+      </ul>
+
+      <p><strong>2. Wallet Linking &amp; Verification</strong></p>
+      <div class="flow" style="color: var(--accent2);">User: /link 0xAlice...7890
+OTTO: Please sign this message to verify ownership:
+      "Link Telegram 483291 to DAC pool 0xPool...1234"
+User: &lt;sends signature via DM or web link&gt;
+OTTO: &#10003; Wallet linked! You are Investor with 14.2% voting power.</div>
+      <ul class="constraints">
+        <li>OTTO generates a unique nonce-based message for the user to sign with their wallet</li>
+        <li>Signature can be submitted via a lightweight web page (deeplink from Telegram) or pasted as text</li>
+        <li>OTTO verifies <code>ecrecover(message, signature) == claimed address</code></li>
+        <li>One wallet per Telegram ID; re-linking replaces the previous binding</li>
+        <li>Linking can also happen via DM to OTTO (private) rather than in the group</li>
+      </ul>
+
+      <p><strong>3. Role &amp; Balance Sync</strong></p>
+      <ul class="constraints">
+        <li>On link, OTTO reads <code>lpToken.balanceOf(address)</code> and <code>lpToken.totalSupply()</code> to compute voting weight</li>
+        <li>OTTO subscribes to <code>Transfer</code> events on the LP Token contract to update balances in real-time</li>
+        <li>Role detection: Manager = <code>pool.manager()</code>, Guardian = <code>pool.guardian()</code>, everyone else = Investor</li>
+        <li>If an investor's balance drops to zero (full withdrawal), their voting right is revoked until they re-deposit</li>
+        <li>OTTO periodically reconciles its local state with on-chain data (every 5 minutes as a safety net)</li>
+      </ul>
+
+      <p><strong>4. Data Model (per user)</strong></p>
+      <div class="flow" style="color: var(--muted);">{
+  telegramId:    number,       // Telegram user ID
+  chatId:        number,       // Corporation group chat ID
+  walletAddress: string,       // 0x... linked wallet
+  verified:      boolean,      // signature verified?
+  role:          "investor" | "manager" | "guardian",
+  lpBalance:     bigint,       // LP token balance (wei)
+  votingPower:   number,       // % of total supply
+  linkedAt:      timestamp,    // when wallet was linked
+  votes:         Vote[]        // history of all votes cast
+}</div>
+
+      <p><strong>5. Proposal Lifecycle</strong></p>
+      <table>
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>Duration</th>
+            <th>What Happens</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Creation</td>
+            <td>Instant</td>
+            <td>OTTO validates eligibility, creates on-chain proposal, pins vote card in chat</td>
+          </tr>
+          <tr>
+            <td>Voting</td>
+            <td>24&ndash;72h (configurable)</td>
+            <td>Participants reply FOR/AGAINST; OTTO tallies in real-time, posts progress updates</td>
+          </tr>
+          <tr>
+            <td>Finalization</td>
+            <td>Instant</td>
+            <td>Quorum met &rarr; OTTO executes on-chain; not met &rarr; proposal expires</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul class="constraints">
+        <li>Only one active proposal at a time per category (prevents spam)</li>
+        <li>Duplicate votes are ignored &mdash; first vote counts</li>
+        <li>OTTO posts a running tally after each vote: <code>FOR: 42% / AGAINST: 12% / Quorum: 51%</code></li>
+        <li>If quorum is reached before deadline, OTTO can execute immediately (configurable)</li>
+      </ul>
+
+      <p><strong>6. On-Chain Execution (Delegation Model)</strong></p>
+      <ul class="constraints">
+        <li>During wallet linking, users sign a one-time delegation tx: <code>votingContract.delegate(ottoWallet)</code></li>
+        <li>OTTO accumulates votes off-chain, then submits one batched transaction: <code>votingContract.submitVotes(proposalId, votes[])</code></li>
+        <li>The Voting contract verifies that OTTO holds valid delegation from each voter</li>
+        <li>After votes are recorded on-chain, if quorum is met, OTTO calls <code>votingContract.execute(proposalId)</code></li>
+        <li>All on-chain activity is reported back to the group with transaction hashes</li>
+      </ul>
+
+      <p><strong>7. OTTO Commands Reference</strong></p>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Who</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/link 0x...</code></td>
+            <td>Anyone</td>
+            <td>Link Telegram ID to wallet address</td>
+          </tr>
+          <tr>
+            <td><code>/status</code></td>
+            <td>Anyone</td>
+            <td>Show treasury balance, active proposals, yield status</td>
+          </tr>
+          <tr>
+            <td><code>/propose &lt;action&gt;</code></td>
+            <td>Investor / Manager</td>
+            <td>Create a governance proposal in natural language</td>
+          </tr>
+          <tr>
+            <td><code>/tally</code></td>
+            <td>Anyone</td>
+            <td>Show current vote count for active proposal</td>
+          </tr>
+          <tr>
+            <td><code>/my</code></td>
+            <td>Linked user</td>
+            <td>Show your wallet, role, LP balance, voting power</td>
+          </tr>
+          <tr>
+            <td><code>/members</code></td>
+            <td>Anyone</td>
+            <td>List all linked members with roles and voting shares</td>
+          </tr>
+          <tr>
+            <td><code>/emergency</code></td>
+            <td>Guardian only</td>
+            <td>Trigger emergency stop on the pool contract</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><strong>8. Security Considerations</strong></p>
+      <ul class="constraints">
+        <li>Wallet linking requires cryptographic signature &mdash; no one can impersonate another wallet</li>
+        <li>OTTO's delegation can be revoked at any time by calling <code>delegate(address(0))</code> on-chain</li>
+        <li>Vote snapshots are taken at proposal creation time &mdash; buying LP tokens after a proposal is live does not grant voting power on it</li>
+        <li>Guardian's <code>/emergency</code> bypasses governance &mdash; it is a direct on-chain call, not a proposal</li>
+        <li>All vote records are stored on-chain and auditable; Telegram chat serves as a human-readable mirror</li>
+      </ul>
+    </div>
+  </section>
+
 </div>
 
 <!-- ══════════════ Full-screen DAC Architecture ══════════════ -->
@@ -891,6 +1258,30 @@
         </div>
       </div>
 
+      <!-- Connection: Voting → OTTO -->
+      <div class="conn conn-v" style="grid-area:v2o;">
+        <div class="conn-line v" style="background:linear-gradient(to bottom,#6c5ce7,#22d3ee); height:80%; top:10%;"></div>
+        <div class="conn-dot" style="background:#22d3ee; left:calc(50% - 3px); bottom:15%; animation-delay:2.1s;"></div>
+      </div>
+
+      <!-- OTTO / Telegram -->
+      <div class="n otto" style="grid-area:otto;">
+        <div class="n-title">OTTO &mdash; Telegram Governance Relay</div>
+        <div class="n-sub">Connects Telegram group chat to on-chain governance. Links tgId &harr; wallet, tracks roles &amp; LP shares, relays votes.</div>
+        <div class="n-actions">
+          <span class="tag can">/link wallet</span>
+          <span class="tag can">/propose</span>
+          <span class="tag can">vote via reply</span>
+          <span class="tag can">/status</span>
+          <span class="tag can">/emergency</span>
+        </div>
+        <div class="n-actions" style="margin-top:6px;">
+          <span class="tag info">delegation model</span>
+          <span class="tag info">real-time LP sync</span>
+          <span class="tag info">auto-execute on quorum</span>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -901,6 +1292,7 @@
     <div class="arch-legend-item"><div class="ln" style="background:#fdcb6e;"></div> yield flow (USYC)</div>
     <div class="arch-legend-item"><div class="ln" style="background:#6c5ce7;"></div> governance / deposit</div>
     <div class="arch-legend-item"><div class="ln" style="background:rgba(255,255,255,0.15);"></div> infrastructure</div>
+    <div class="arch-legend-item"><div class="ln" style="background:linear-gradient(to right,#a78bfa,#22d3ee);"></div> OTTO relay</div>
   </div>
 </section>
 

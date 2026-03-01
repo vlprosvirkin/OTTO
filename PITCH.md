@@ -56,18 +56,18 @@ Done. Zero manual steps. Zero gas fees.
 │  │   agent.md      │    │         openclaw.json              │   │
 │  │   Role, rules,  │    │  provider: Claude (Anthropic)      │   │
 │  │   chain ref,    │    │  channel:  Telegram                │   │
-│  │   tool docs     │    │  skills:   9 skill modules         │   │
+│  │   tool docs     │    │  skills:   10 skill modules         │   │
 │  └─────────────────┘    └────────────────────────────────────┘   │
 │                                                                  │
-│  Skill Scripts (bash) — 9 modules:                               │
+│  Skill Scripts (bash) — 10 modules:                              │
 │  arc-balance  ·  arc-wallet  ·  arc-transfer  ·  arc-gateway     │
 │  arc-x402 ✨  ·  arc-vault 🔒  ·  arc-rebalancer 🔄              │
-│  arc-oracle 📈  ·  arc-yield 📊                                   │
+│  arc-oracle 📈  ·  arc-yield 📊  ·  arc-governance ⚖️             │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ tsx invoke.ts <tool> <args>
 ┌───────────────────────────────▼──────────────────────────────────┐
 │                    arc-wallet-mcp                                │
-│         MCP Server (Model Context Protocol) — 41 tools           │
+│         MCP Server (Model Context Protocol) — 59 tools           │
 │                                                                  │
 │  ┌────────────┬────────────┬────────────┬────────────────────┐   │
 │  │  balance   │  wallet    │ transfer   │  vault 🔒           │   │
@@ -77,7 +77,10 @@ Done. Zero manual steps. Zero gas fees.
 │  │  fetch +   │ REST API + │ rate +     │  cross-chain       │   │
 │  │  payer     │ on-chain   │ balance +  │  vault health      │   │
 │  │  info      │ aggregator │ deposit +  │                    │   │
-│  │            │            │ redeem     │                    │   │
+│  ├────────────┴────────────┴────────────┴────────────────────┤   │
+│  │  vault-v2 ⚖️ (11)         governance ⚖️ (7)                │   │
+│  │  deploy, shareholders,    gov_setup, gov_link,            │   │
+│  │  propose, vote, execute   gov_propose, gov_vote, tally    │   │
 │  └────────────┴────────────┴────────────┴────────────────────┘   │
 └──────┬──────────────┬──────────────┬──────────────┬──────────────┘
        │              │              │              │
@@ -245,7 +248,7 @@ This is the **earn** side of the autonomous treasury cycle: monitor → earn →
 
 ---
 
-## MCP Tools Catalog (41 tools across 10 modules)
+## MCP Tools Catalog (59 tools across 11 modules)
 
 | Tool | Description |
 |------|-------------|
@@ -290,6 +293,24 @@ This is the **earn** side of the autonomous treasury cycle: monitor → earn →
 | `vault_check_whitelist` 🔒 | Check if an address is whitelisted on a vault |
 | `vault_payroll` 🔒 | Batch payroll: multiple vault transfers in sequence with receipts |
 | `rebalance_check` 🔄 | Check vault balances on all chains, report health + shortfall |
+| `v2_deploy` ⚖️ | Deploy full V2 governance stack (VaultV2 + ShareToken + Governor) |
+| `v2_status` ⚖️ | Full V2 vault state: CEO, agent, governor, share token, balances |
+| `v2_shareholders` ⚖️ | Shareholder list with share balances, voting power, revenue claims |
+| `v2_distribute_revenue` ⚖️ | Distribute USDC revenue to all shareholders pro-rata |
+| `v2_claim_revenue` ⚖️ | Claim accumulated revenue for a shareholder |
+| `v2_propose` ⚖️ | Create governance proposal (setCeo / dissolve) via OTTOGovernor |
+| `v2_vote` ⚖️ | Cast governance vote (For / Against / Abstain) with token weight |
+| `v2_execute` ⚖️ | Execute passed governance proposal on-chain |
+| `v2_invest_yield` ⚖️ | Invest idle vault USDC into USYC (CEO only) |
+| `v2_redeem_yield` ⚖️ | Redeem USYC back to USDC for the vault (CEO only) |
+| `v2_dissolve_status` ⚖️ | Track dissolution progress: yield redeemed, USDC distributed, claims |
+| `gov_setup` 💬 | Configure DAC: set vault, governor, share token addresses |
+| `gov_link` 💬 | Link Telegram user ID to ETH wallet, verify share token balance |
+| `gov_members` 💬 | List all linked members with roles, shares, voting power |
+| `gov_my_info` 💬 | User's governance info: wallet, role, LP balance, vote history |
+| `gov_propose` 💬 | Create governance proposal via Telegram chat |
+| `gov_vote` 💬 | Cast weighted vote from Telegram (For / Against / Abstain) |
+| `gov_tally` 💬 | Vote tally: FOR/AGAINST/ABSTAIN %, voter list, quorum progress |
 
 ---
 
@@ -386,6 +407,42 @@ Agent:
   → Telegram: "Redeemed 20.04 USYC → 20.52 USDC. Yield earned: $0.52"
 ```
 
+### 6. Chat-Based Governance
+
+DAC members govern their shared treasury through a Telegram group chat — no dApps, no MetaMask popups.
+
+```
+Alice → Group Chat: "link my wallet 0xA1c3..."
+
+OTTO:
+  → gov_link(alice_tg_id, "0xA1c3...")
+  → reads ShareToken.balanceOf → 1,400 tokens (14.2%)
+  → detects role: Shareholder
+  → "Linked! You are Shareholder with 14.2% voting power."
+
+Bob → Group Chat: "propose new CEO 0xNewCeo — better yield strategy"
+
+OTTO:
+  → gov_propose(bob_tg_id, "setCeo", "better yield strategy", "0xNewCeo")
+  → creates on-chain proposal via OTTOGovernor
+  → "Proposal #3 created: setCeo → 0xNewCeo. Vote with 'for' or 'against'."
+
+Alice → "vote for"
+Carol → "vote against"
+
+OTTO (after each vote):
+  → gov_vote(voter_tg_id, proposal_3, support)
+  → records weighted vote (Alice: 1,400 FOR, Carol: 800 AGAINST)
+  → "Current tally: FOR 63.6% / AGAINST 36.4%"
+
+Anyone → "tally"
+OTTO:
+  → gov_tally(proposal_3)
+  → "Proposal #3: FOR 63.6% (1,400) · AGAINST 36.4% (800) · Quorum: 72%"
+```
+
+Zero dApps. Zero wallet popups. Governance happens where the team already talks.
+
 ---
 
 ## Use Cases
@@ -415,6 +472,12 @@ A treasury holds 50,000 USDC that won't be needed for two weeks. Today that capi
 
 ### Treasury Reporting on Demand
 The team lead asks for a snapshot of the treasury at any time — mid-meeting, from a phone. OTTO responds in seconds with balances across all chains, USYC yield positions, recent inflows/outflows, and a summary of x402 payments made. No dashboard login. No spreadsheet. Just a Telegram message.
+
+### Chat-Based DAC Governance
+A group of shareholders co-own a V2 treasury vault. Traditionally, governance means visiting a dApp, connecting a wallet, navigating a proposal list, and signing transactions. With OTTO in the group chat: members link wallets once, then propose CEO changes, vote by replying "for" or "against", and see weighted tallies — all without leaving Telegram. OTTO reads share balances on-chain and enforces one-vote-per-member with token-weighted power.
+
+> "propose new CEO 0xNewAddr — she has a better yield strategy"
+> Members vote in replies. OTTO tallies: FOR 63.6%, AGAINST 36.4%. Quorum reached. Ready to execute.
 
 ---
 
@@ -603,12 +666,12 @@ The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO c
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `arc-wallet-mcp` — full MCP server | ✅ Built | 41 tools across 10 modules |
+| `arc-wallet-mcp` — full MCP server | ✅ Built | 59 tools across 11 modules |
 | `x402_fetch` + `x402_payer_info` tools | ✅ Built | Auto-pay on HTTP 402 |
 | x402 payer wallet (funded) | ✅ Ready | 20 USDC on Arc Testnet |
 | OTTO agent framework | ✅ Built | Claude (Anthropic), Telegram, bash skills |
-| All bash skill scripts | ✅ Built | 9 skills: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer, arc-oracle, arc-yield |
-| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 41 tools wired |
+| All bash skill scripts | ✅ Built | 10 skills: arc-balance, arc-wallet, arc-transfer, arc-gateway, arc-x402, arc-vault, arc-rebalancer, arc-oracle, arc-yield, arc-governance |
+| `invoke.ts` CLI bridge | ✅ Built | Dynamic imports, all 59 tools wired |
 | **OTTOVault smart contract** | ✅ Deployed | All 3 chains · 43 Solidity tests + 101 vitest = 144 total, all passing |
 | **Vault tools** (status, transfer, can_transfer, deposit, payroll) | ✅ Built | MCP tools + bash skills (15 vault handlers) |
 | **User ownership** (register_address, transfer_admin, encode_admin_tx) | ✅ Built | Tier 3 signing flow via ottoarc.xyz |
@@ -618,6 +681,8 @@ The admin (user's MetaMask wallet) controls limits via Tier 3 signing — OTTO c
 | Demo x402 oracle server | ✅ Built | Express, Stork-powered, Telegram auth, 3 endpoints |
 | Rebalancer skill | ✅ Built | Cross-chain vault monitoring + auto-rebalance via heartbeat |
 | Contract verification | ✅ Verified | Arc Testnet, Base Sepolia, Avalanche Fuji |
+| **V2 Governance Treasury** (v2_deploy, v2_propose, v2_vote, v2_execute) | ✅ Built | 11 tools: shareholder-owned vault + OTTOGovernor + OTTOShareToken |
+| **Chat Governance** (gov_setup, gov_link, gov_propose, gov_vote, gov_tally) | ✅ Built | 7 tools: Telegram wallet linking, chat voting, weighted tallies |
 | CI/CD auto-deploy | ✅ Built | GitHub Actions → GCP via SSH + Telegram notifications |
 
 ---
@@ -644,7 +709,7 @@ Together, these form a complete stack for autonomous treasury management: custod
 
 ```
 OTTO/                        # GitHub monorepo: vlprosvirkin/OTTO
-├── mcp/                     # MCP server — 41 tools across 10 modules
+├── mcp/                     # MCP server — 59 tools across 11 modules
 │   └── src/tools/
 │       ├── balance.ts       # get_usdc_balance, get_gateway_balance, check_wallet_gas
 │       ├── wallet.ts        # create_wallet_set, create_multichain_wallet, ...

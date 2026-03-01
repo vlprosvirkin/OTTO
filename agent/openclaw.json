@@ -37,7 +37,8 @@
       "arc-vault": { "enabled": true },
       "arc-rebalancer": { "enabled": true },
       "arc-oracle": { "enabled": true },
-      "arc-yield": { "enabled": true }
+      "arc-yield": { "enabled": true },
+      "arc-governance": { "enabled": true }
     }
   }
 }

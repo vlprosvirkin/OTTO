@@ -61,11 +61,11 @@ Done. Zero manual steps. Zero gas fees.
 
 ```
 OTTO/
-├── mcp/          # MCP server — 29 Circle/Arc/Vault tools
-├── agent/        # OpenClaw agent — Claude, Telegram, bash skills
+├── mcp/          # MCP server — 59 tools across 11 modules
+├── agent/        # OpenClaw agent — Claude, Telegram, 10 skill modules
 ├── contracts/    # OTTOVault.sol — on-chain spending limits
 ├── demo-server/  # x402 oracle server
-└── docs/         # Architecture & security docs
+└── docs/         # Architecture, security & DAC governance docs
 ```
 
 ### Stack
@@ -98,9 +98,9 @@ cp agent/.env.example agent/.env
 cd agent && npm run setup-payer
 ```
 
-## MCP Tools
+## MCP Tools (59 across 11 modules)
 
-`get_usdc_balance` · `get_gateway_balance` · `check_wallet_gas` · `transfer_usdc_custodial` · `transfer_usdc_eoa` · `deposit_usdc` · `withdraw_usdc` · `create_multichain_wallet` · `get_wallet_info` · `get_user_wallets` · `get_transaction_history` · `get_gateway_info` · `get_supported_chains` · `get_transfer_status` · **`x402_fetch`** · **`x402_payer_info`** · `vault_status` · `vault_transfer` · `vault_deposit` · `deploy_user_vault` · `register_user_address` · `transfer_vault_admin` · `encode_admin_tx` · `create_invoice` · `check_invoice_status`
+`get_usdc_balance` · `get_gateway_balance` · `check_wallet_gas` · `transfer_usdc_custodial` · `transfer_usdc_eoa` · `deposit_usdc` · `withdraw_usdc` · `create_multichain_wallet` · `get_wallet_info` · `get_user_wallets` · `get_transaction_history` · `get_gateway_info` · `get_supported_chains` · `get_transfer_status` · **`x402_fetch`** · **`x402_payer_info`** · `stork_price` · `stork_onchain_price` · `usyc_rate` · `usyc_balance` · `usyc_deposit` · `usyc_redeem` · `vault_status` · `vault_transfer` · `vault_can_transfer` · `vault_deposit` · `deploy_user_vault` · `get_user_vault` · `register_user_address` · `get_user_address` · `transfer_vault_admin` · `encode_admin_tx` · `create_invoice` · `check_invoice_status` · `vault_check_whitelist` · `vault_payroll` · `rebalance_check` · `v2_deploy` · `v2_status` · `v2_shareholders` · `v2_distribute_revenue` · `v2_claim_revenue` · `v2_propose` · `v2_vote` · `v2_execute` · `v2_invest_yield` · `v2_redeem_yield` · `v2_dissolve_status` · **`gov_setup`** · **`gov_link`** · **`gov_members`** · **`gov_my_info`** · **`gov_propose`** · **`gov_vote`** · **`gov_tally`**
 
 ---
 

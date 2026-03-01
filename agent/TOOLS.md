@@ -11,6 +11,7 @@
 - **arc-rebalancer** — cross-chain vault monitoring and rebalancing
 - **arc-oracle** — Stork Oracle price feeds (REST API + on-chain aggregator)
 - **arc-yield** — USYC yield management (invest idle USDC into tokenized T-bills)
+- **arc-governance** — V2 governance treasury (shareholder vault, CEO election, revenue) + chat governance (Telegram wallet linking, chat voting, weighted tallies)
 
 ## Chains
 

@@ -62,7 +62,7 @@ When someone asks "what is OTTO", "what can you do", "tell me about the project"
 **How it's built**:
 - **AI**: Claude (Anthropic) as the reasoning engine
 - **Agent framework**: OpenClaw — gives Claude persistent identity, skills, and channels (Telegram, web)
-- **MCP server**: 22+ tools wrapping Circle APIs — balances, wallets, transfers, Gateway, x402, vault
+- **MCP server**: 59 tools wrapping Circle APIs, oracles, yield, governance — balances, wallets, transfers, Gateway, x402, vault, Stork, USYC, V2 governance, chat governance
 - **OTTOVault**: Custom Solidity smart contract deployed on all 3 chains. Holds org USDC, enforces per-tx (10 USDC) and daily (100 USDC) spending limits at the EVM level. No prompt injection can override this — the blockchain rejects it.
 - **x402**: HTTP nanopayment protocol. Agent fetches a paid API → gets 402 → signs EIP-3009 authorization → pays in USDC → gets data. Zero gas, zero human action.
 - **Circle Gateway**: Unified USDC balance across chains. No wrapped tokens, no liquidity fragmentation.
@@ -137,6 +137,17 @@ OTTO — автономный казначей на Arc.
 
 💸 Выплаты
   список адресов + суммы → батч-перевод
+
+⚖️ Governance (V2 Treasury)
+  shareholders — cap table и голоса
+  propose / vote / execute — управление через Governor
+
+💬 Chat Governance (Telegram)
+  привяжи кошелёк 0x... — связать tgId с wallet
+  участники — список с ролями и долями
+  предложи нового CEO — голосование в чате
+  голосую за/против — взвешенный голос
+  итоги — текущий счёт голосования
 
 Сети: Arc Testnet · Base Sepolia · Avalanche Fuji
 Протокол: Circle Gateway (без газа, без бриджинга вручную)
@@ -733,6 +744,82 @@ bash {skills}/arc-rebalancer/scripts/rebalance.sh [min_usdc] [eth_address]
 ```
 Checks all 3 vault balances. Returns JSON: healthy/low/empty status + shortfall + recommendation.
 Always pass `eth_address` to resolve the correct user's vaults.
+
+### arc-governance (V2 Treasury)
+
+**Triggers**: "shareholders", "governance", "vote", "propose", "CEO", "revenue", "distribute", "dissolve", "idle assets", "yield", "cap table"
+
+V2 governance treasury on Arc Testnet: shareholder-owned vault with CEO election, revenue distribution, yield management, dissolution.
+
+```bash
+# Deploy full V2 stack (VaultV2 + ShareToken + Governor)
+bash {skills}/arc-governance/scripts/v2_deploy.sh <factory> <salt> <shareholders_csv> <bps_csv> [max_per_tx] [daily_limit]
+
+# Status + shareholders
+bash {skills}/arc-governance/scripts/v2_status.sh <vault_address>
+bash {skills}/arc-governance/scripts/v2_shareholders.sh <vault_address> <shareholders_csv>
+
+# Revenue
+bash {skills}/arc-governance/scripts/v2_distribute_revenue.sh <vault_address> <amount_usdc>
+bash {skills}/arc-governance/scripts/v2_claim_revenue.sh <vault_address>
+
+# Yield management (CEO)
+bash {skills}/arc-governance/scripts/v2_invest_yield.sh <vault_address> <amount_usdc>
+bash {skills}/arc-governance/scripts/v2_redeem_yield.sh <vault_address> <amount_usyc>
+
+# Governance proposals
+bash {skills}/arc-governance/scripts/v2_propose.sh <vault> <governor> <action> <description> [new_ceo]
+bash {skills}/arc-governance/scripts/v2_vote.sh <governor> <proposal_id> <support>
+bash {skills}/arc-governance/scripts/v2_execute.sh <vault> <governor> <action> <description> [new_ceo]
+
+# Dissolution tracking
+bash {skills}/arc-governance/scripts/v2_dissolve_status.sh <vault_address> <shareholders_csv>
+```
+
+**Governance playbook**: propose → wait votingDelay (1 block) → vote → wait votingPeriod (100 blocks) → execute.
+**Dissolution playbook**: propose dissolve → vote → execute → CEO redeems yield → finalize → shareholders claim.
+
+### Chat Governance (Telegram group)
+
+**Triggers**: "link wallet", "привяжи кошелёк", "members", "участники", "propose", "предложи", "vote", "голосую", "tally", "итоги голосования", "my info", "мой статус"
+
+OTTO connects to a Telegram group chat where DAC members can govern their shared treasury through natural language. Each member's Telegram ID is linked to their ETH wallet, and OTTO tracks roles (CEO/Agent/Shareholder), share balances, and voting power from the on-chain ShareToken.
+
+```bash
+# Setup DAC (admin, once)
+bash {skills}/arc-governance/scripts/gov_setup.sh <vault_address> <governor_address> <share_token_address> [chat_id]
+
+# Link wallet
+bash {skills}/arc-governance/scripts/gov_link.sh <user_id> <eth_address> [display_name]
+
+# List members
+bash {skills}/arc-governance/scripts/gov_members.sh
+
+# User info
+bash {skills}/arc-governance/scripts/gov_my_info.sh <user_id>
+
+# Propose (setCeo | dissolve)
+bash {skills}/arc-governance/scripts/gov_propose.sh <user_id> <action> <description> [new_ceo]
+
+# Vote (0=Against, 1=For, 2=Abstain)
+bash {skills}/arc-governance/scripts/gov_vote.sh <user_id> <proposal_id> <support>
+
+# Tally
+bash {skills}/arc-governance/scripts/gov_tally.sh [proposal_id]
+```
+
+**Chat governance playbook**:
+1. Admin runs `gov_setup` with V2 contract addresses
+2. Each member says "link my wallet 0x..." → OTTO runs `gov_link`, verifies share token balance > 0, assigns role
+3. Member says "propose new CEO 0x..." → OTTO runs `gov_propose`, creates on-chain proposal
+4. Members reply "vote for" / "vote against" → OTTO runs `gov_vote` with their token weight
+5. Anyone asks "tally" → OTTO shows weighted vote breakdown, quorum progress, on-chain state
+
+**Rules**:
+- Only users with ShareToken balance > 0 can link and vote
+- Each user can only vote once per proposal
+- Vote weight = user's ShareToken.getVotes() balance
+- Roles: CEO = vault.ceo(), Agent = vault.agent(), else = Shareholder
 
 ---
 
