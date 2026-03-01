@@ -25,11 +25,7 @@ import {
   handleDepositUsdc,
   handleWithdrawUsdc,
 } from "./tools/deposit.js";
-import {
-  handleTransferUsdcEoa,
-  handleTransferUsdcCustodial,
-  handleExecuteGatewayMint,
-} from "./tools/transfer.js";
+import { handleVaultBridge } from "./tools/vault-bridge.js";
 import {
   handleCreateWalletSet,
   handleCreateMultichainWallet,
@@ -189,51 +185,23 @@ server.tool(
   })
 );
 
-// ─── Transfer Tools ────────────────────────────────────────────────────────────
+// ─── Cross-Chain Vault Bridge ─────────────────────────────────────────────────
 
 server.tool(
-  "transfer_usdc_eoa",
-  "Transfer USDC cross-chain via Circle Gateway using an EOA wallet for signing. Requires the user to have deposited USDC into Gateway first. Amount must be > 2.01 USDC to cover fees.",
+  "vault_bridge",
+  "Bridge USDC between OTTOVault contracts on different chains via Circle Gateway. " +
+  "Withdraws from source vault, bridges through Gateway (agent signs), deposits into destination vault. " +
+  "Amount must be > 2.01 USDC to cover Gateway fees (~1-2 USDC). " +
+  "Use rebalance_check first to determine which vaults need funding.",
   {
-    user_id: z.string().describe("User ID (to look up EOA signer wallet)"),
-    depositor_wallet_id: z.string().describe("Circle wallet ID that deposited USDC into Gateway"),
-    source_chain: CHAIN_ENUM.describe("Source chain with Gateway balance"),
-    destination_chain: CHAIN_ENUM.describe("Destination chain to receive USDC"),
-    amount_usdc: z.number().positive().describe("Amount to transfer (must be > 2.01 USDC)"),
-    recipient_address: z.string().optional().describe("(Optional) Recipient address. Defaults to depositor wallet."),
-  },
-  async ({ user_id, depositor_wallet_id, source_chain, destination_chain, amount_usdc, recipient_address }) => ({
-    content: [{ type: "text" as const, text: await handleTransferUsdcEoa({ user_id, depositor_wallet_id, source_chain, destination_chain, amount_usdc, recipient_address }) }],
-  })
-);
-
-server.tool(
-  "transfer_usdc_custodial",
-  "Transfer USDC cross-chain via Circle Gateway using a Circle custodial SCA wallet for signing. Amount must be > 1.01 USDC to cover fees.",
-  {
-    wallet_id: z.string().describe("Circle SCA wallet ID that deposited and will sign the transfer"),
+    source_vault: z.string().describe("Source vault contract address (0x)"),
     source_chain: CHAIN_ENUM.describe("Source chain"),
-    destination_chain: CHAIN_ENUM.describe("Destination chain"),
-    amount_usdc: z.number().positive().describe("Amount to transfer (must be > 1.01 USDC)"),
-    recipient_address: z.string().optional().describe("(Optional) Recipient address on destination chain"),
-    user_id: z.string().optional().describe("(Optional) User ID to record transaction in database"),
+    dest_vault: z.string().describe("Destination vault contract address (0x)"),
+    dest_chain: CHAIN_ENUM.describe("Destination chain"),
+    amount_usdc: z.number().positive().describe("Amount of USDC to bridge (must be > 2.01)"),
   },
-  async ({ wallet_id, source_chain, destination_chain, amount_usdc, recipient_address, user_id }) => ({
-    content: [{ type: "text" as const, text: await handleTransferUsdcCustodial({ wallet_id, source_chain, destination_chain, amount_usdc, recipient_address, user_id }) }],
-  })
-);
-
-server.tool(
-  "execute_gateway_mint",
-  "Execute a gatewayMint transaction on the destination chain using an existing attestation and signature. Use this to finalize a cross-chain transfer.",
-  {
-    wallet_id: z.string().describe("Circle wallet ID to execute the mint"),
-    destination_chain: CHAIN_ENUM.describe("Destination chain for mint"),
-    attestation: z.string().describe("Attestation payload (hex) from Gateway API"),
-    signature: z.string().describe("Attestation signature (hex) from Gateway API"),
-  },
-  async ({ wallet_id, destination_chain, attestation, signature }) => ({
-    content: [{ type: "text" as const, text: await handleExecuteGatewayMint({ wallet_id, destination_chain, attestation, signature }) }],
+  async ({ source_vault, source_chain, dest_vault, dest_chain, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleVaultBridge({ source_vault, source_chain, dest_vault, dest_chain, amount_usdc }) }],
   })
 );
 

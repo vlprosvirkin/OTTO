@@ -243,7 +243,7 @@ export function createApp(
       .select("*")
       .eq("eth_address", addr)
       .single();
-    if (!entry) {
+    if (!entry || !entry.tg_id) {
       res.json({ bound: false });
       return;
     }
