@@ -66,7 +66,6 @@ contract OTTOVaultV2 is ReentrancyGuard {
     // ─── Dissolution ─────────────────────────────────────────────────────────
 
     uint256 public dissolutionPool;
-    mapping(address => bool) public dissolutionClaimed;
 
     // ─── Yield Strategy ──────────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ contract OTTOVaultV2 is ReentrancyGuard {
     event Skimmed(address indexed to, uint256 amount);
     event DissolutionStarted();
     event DissolutionFinalized(uint256 pool);
-    event DissolutionClaimed(address indexed shareholder, uint256 amount);
+    event DissolutionPayout(address indexed shareholder, uint256 amount);
     event CeoUpdated(address indexed newCeo);
     event AgentUpdated(address indexed newAgent);
     event LimitsUpdated(uint256 maxPerTx, uint256 dailyLimit);
@@ -114,7 +113,6 @@ contract OTTOVaultV2 is ReentrancyGuard {
     error UsdcNotInitialized();
     error ShareTokenAlreadySet();
     error GovernorAlreadySet();
-    error AlreadyClaimed();
     error NoYieldStrategy();
     error NothingToSkim();
 
@@ -425,20 +423,19 @@ contract OTTOVaultV2 is ReentrancyGuard {
         dissolutionPool = usdc.balanceOf(address(this));
         vaultState = VaultState.Dissolved;
         shareToken.freeze();
+
+        // Auto-distribute pro-rata to all shareholders
+        uint256 supply = shareToken.totalSupply();
+        address[] memory holders = shareToken.getShareholders();
+        for (uint256 i = 0; i < holders.length; i++) {
+            uint256 share = shareToken.balanceOf(holders[i]);
+            if (share == 0) continue;
+            uint256 payout = (dissolutionPool * share) / supply;
+            usdc.safeTransfer(holders[i], payout);
+            emit DissolutionPayout(holders[i], payout);
+        }
+
         emit DissolutionFinalized(dissolutionPool);
-    }
-
-    function claimDissolution() external inState(VaultState.Dissolved) nonReentrant {
-        if (dissolutionClaimed[msg.sender]) revert AlreadyClaimed();
-
-        uint256 share = shareToken.balanceOf(msg.sender);
-        if (share == 0) revert ZeroAmount();
-
-        uint256 payout = (dissolutionPool * share) / shareToken.totalSupply();
-        dissolutionClaimed[msg.sender] = true;
-        usdc.safeTransfer(msg.sender, payout);
-
-        emit DissolutionClaimed(msg.sender, payout);
     }
 
     // ─── View: Status ────────────────────────────────────────────────────────

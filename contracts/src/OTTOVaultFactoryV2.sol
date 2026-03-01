@@ -1,28 +1,34 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {OTTOShareToken} from "./OTTOShareToken.sol";
 import {OTTOVaultV2} from "./OTTOVaultV2.sol";
-import {OTTOGovernor} from "./OTTOGovernor.sol";
+import {OTTORegistry} from "./OTTORegistry.sol";
+import {OTTOTokenDeployer} from "./deployers/OTTOTokenDeployer.sol";
+import {OTTOGovernorDeployer} from "./deployers/OTTOGovernorDeployer.sol";
+import {OTTOVaultDeployer} from "./deployers/OTTOVaultDeployer.sol";
 
 /**
  * @title OTTOVaultFactoryV2
- * @notice Atomic CREATE2 deployment of the full V2 treasury stack:
- *         OTTOShareToken + OTTOGovernor + OTTOVaultV2.
+ * @notice Orchestrates deployment of the full V2 treasury stack via sub-deployers.
  *
- * Same factory + same salt + same constructor args (minus USDC)
- * = same addresses on every chain.
+ * Split into 3 sub-deployers to stay under the 24KB EVM contract size limit:
+ *   - OTTOTokenDeployer:     deploys OTTOShareToken
+ *   - OTTOGovernorDeployer:  deploys OTTOGovernor
+ *   - OTTOVaultDeployer:     deploys OTTOVaultV2
  *
- * Flow:
- *   1. Deploy OTTOShareToken (CREATE2 with salt)
- *   2. Deploy OTTOGovernor (CREATE2 with derived salt)
- *   3. Deploy OTTOVaultV2 (CREATE2 with derived salt)
- *   4. Wire: token ↔ vault ↔ governor
- *   5. Transfer CEO to msg.sender
+ * This factory orchestrates all 3, wires them together, registers in OTTORegistry,
+ * and transfers CEO to the caller.
+ *
+ * CREATE2 determinism: same deployers + same salt + same args = same addresses on every chain.
+ * USDC is excluded from CREATE2 computation for cross-chain address consistency.
  */
 contract OTTOVaultFactoryV2 {
+
+    OTTOTokenDeployer    public immutable tokenDeployer;
+    OTTOGovernorDeployer public immutable governorDeployer;
+    OTTOVaultDeployer    public immutable vaultDeployer;
+    OTTORegistry         public immutable registry;
 
     event V2Deployed(
         address indexed vault,
@@ -32,8 +38,20 @@ contract OTTOVaultFactoryV2 {
         bytes32 salt
     );
 
+    constructor(
+        address _tokenDeployer,
+        address _governorDeployer,
+        address _vaultDeployer,
+        address _registry
+    ) {
+        tokenDeployer    = OTTOTokenDeployer(_tokenDeployer);
+        governorDeployer = OTTOGovernorDeployer(_governorDeployer);
+        vaultDeployer    = OTTOVaultDeployer(_vaultDeployer);
+        registry         = OTTORegistry(_registry);
+    }
+
     /**
-     * @notice Deploy the full V2 treasury stack atomically.
+     * @notice Deploy the full V2 treasury stack.
      * @param salt              User-chosen salt for deterministic deployment
      * @param usdc              USDC token address on this chain
      * @param agent             OTTO agent address
@@ -57,44 +75,35 @@ contract OTTOVaultFactoryV2 {
         uint256[] calldata sharesBps
     ) external returns (address vault, address token, address gov) {
 
-        // 1. Deploy share token
-        bytes memory tokenBytecode = abi.encodePacked(
-            type(OTTOShareToken).creationCode,
-            abi.encode("OTTO Shares", "OTTOS", shareholders, sharesBps)
-        );
-        token = Create2.deploy(0, salt, tokenBytecode);
+        // 1. Deploy share token via sub-deployer
+        token = tokenDeployer.deploy(salt, shareholders, sharesBps);
 
-        // 2. Deploy governor
+        // 2. Deploy governor via sub-deployer
         bytes32 govSalt = keccak256(abi.encodePacked(salt, "governor"));
-        bytes memory govBytecode = abi.encodePacked(
-            type(OTTOGovernor).creationCode,
-            abi.encode(token)
-        );
-        gov = Create2.deploy(0, govSalt, govBytecode);
+        gov = governorDeployer.deploy(govSalt, token);
 
-        // 3. Deploy vault (USDC excluded from bytecode for cross-chain determinism)
+        // 3. Deploy vault via sub-deployer (CEO transferred to this factory)
         bytes32 vaultSalt = keccak256(abi.encodePacked(salt, "vault"));
-        bytes memory vaultBytecode = abi.encodePacked(
-            type(OTTOVaultV2).creationCode,
-            abi.encode(agent, maxPerTx, dailyLimit, whitelistEnabled)
-        );
-        vault = Create2.deploy(0, vaultSalt, vaultBytecode);
+        vault = vaultDeployer.deploy(vaultSalt, agent, maxPerTx, dailyLimit, whitelistEnabled);
 
-        // 4. Wire up
+        // 4. Wire up (one-time init functions, no access control needed)
         OTTOShareToken(token).setVault(vault);
         OTTOVaultV2(vault).initializeUsdc(usdc);
         OTTOVaultV2(vault).setShareToken(token);
         OTTOVaultV2(vault).setGovernor(gov);
 
-        // 5. Transfer CEO to the actual caller
+        // 5. Transfer CEO from factory to the caller
         OTTOVaultV2(vault).transferCeo(msg.sender);
+
+        // 6. Register in on-chain registry
+        registry.register(salt, vault, token, gov, msg.sender);
 
         emit V2Deployed(vault, token, gov, msg.sender, salt);
     }
 
     /**
      * @notice Predict deterministic addresses before deployment.
-     * @dev USDC is not part of computation — same addresses regardless of chain.
+     * @dev USDC is excluded — same addresses regardless of chain.
      */
     function computeAddress(
         bytes32 salt,
@@ -105,24 +114,12 @@ contract OTTOVaultFactoryV2 {
         address[] calldata shareholders,
         uint256[] calldata sharesBps
     ) external view returns (address vault, address token, address gov) {
-        bytes memory tokenBytecode = abi.encodePacked(
-            type(OTTOShareToken).creationCode,
-            abi.encode("OTTO Shares", "OTTOS", shareholders, sharesBps)
-        );
-        token = Create2.computeAddress(salt, keccak256(tokenBytecode));
+        token = tokenDeployer.computeAddress(salt, shareholders, sharesBps);
 
         bytes32 govSalt = keccak256(abi.encodePacked(salt, "governor"));
-        bytes memory govBytecode = abi.encodePacked(
-            type(OTTOGovernor).creationCode,
-            abi.encode(token)
-        );
-        gov = Create2.computeAddress(govSalt, keccak256(govBytecode));
+        gov = governorDeployer.computeAddress(govSalt, token);
 
         bytes32 vaultSalt = keccak256(abi.encodePacked(salt, "vault"));
-        bytes memory vaultBytecode = abi.encodePacked(
-            type(OTTOVaultV2).creationCode,
-            abi.encode(agent, maxPerTx, dailyLimit, whitelistEnabled)
-        );
-        vault = Create2.computeAddress(vaultSalt, keccak256(vaultBytecode));
+        vault = vaultDeployer.computeAddress(vaultSalt, agent, maxPerTx, dailyLimit, whitelistEnabled);
     }
 }

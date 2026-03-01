@@ -97,8 +97,8 @@ Done. Zero manual steps. Zero gas fees.
 └─────────────────────┘  └────────────────────┘  └─────────────────┘
            │
 ┌──────────▼──────────────────────────────────────────────────────┐
-│                  OTTOVault 🔒 (Arc Testnet)                      │
-│  Solidity contract · 0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA │
+│                  OTTOVaultV2 🔒 (Arc Testnet)                     │
+│  Factory · 0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe             │
 │                                                                  │
 │  Holds org USDC · Per-tx cap: 10 USDC · Daily cap: 100 USDC    │
 │  Agent role enforced on-chain · Whitelist · Emergency pause     │
@@ -169,10 +169,12 @@ Pause:       admin can halt all agent operations immediately
 These limits are enforced at the EVM level. No instruction, no prompt injection, no AI compromise can override them — the blockchain rejects the transaction before USDC moves.
 
 ```
-Deployed on 3 chains (verified):
-  Arc Testnet:     0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA
-  Base Sepolia:    0x47C1feaC66381410f5B050c39F67f15BbD058Af1
-  Avalanche Fuji:  0x47C1feaC66381410f5B050c39F67f15BbD058Af1
+Deployed on Arc Testnet (verified):
+  Factory:          0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe
+  Registry:         0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67
+  TokenDeployer:    0x1A0D1670405B1F193F384C51647a0b4026D0c34b
+  GovernorDeployer: 0x871030f39f386930F3BF951d70371816e9C8b1bd
+  VaultDeployer:    0x07f135206cb3a3a3140e1baBa0953a41214A9825
 Stack:    Solidity 0.8.20 + OpenZeppelin + Foundry
 Tests:    43 Solidity + 101 vitest = 144 total, all passing
 ```
@@ -344,7 +346,7 @@ OTTO is designed on one fundamental assumption: **the AI can make mistakes, but 
 └───────────────────────────────┬─────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────┐
-│    OTTOVault (deployed · Arc Testnet · 0xFFfeEd...)  │
+│    OTTOVaultV2 (Factory · Arc Testnet · 0x9ede...)    │
 │                                                      │
 │  Per-transaction limit:    ≤ 10 USDC   ✗ BLOCKED    │
 │  Daily spend limit:        ≤ 100 USDC (24h window)  │

@@ -2,14 +2,14 @@
  * OTTOVault V2 — Governance Treasury MCP Tools
  *
  * Interact with OTTOVaultV2, OTTOShareToken, and OTTOGovernor contracts.
- * Provides: deploy, status, shareholders, revenue distribution, governance voting,
+ * Provides: status, shareholders, revenue distribution, governance voting,
  * yield management, and dissolution tracking.
  *
- * V2 operates on Arc Testnet only (governance chain). Satellite V1 vaults
- * on Base Sepolia / Avalanche Fuji are managed via the existing vault.ts tools.
+ * V2 operates on Arc Testnet only (governance chain).
+ * Vaults are deployed by users from the frontend (ottoarc.xyz), NOT by the MCP.
  *
  * Environment variables:
- *   X402_PAYER_PRIVATE_KEY — Agent private key (same wallet used for V1 + x402)
+ *   X402_PAYER_PRIVATE_KEY — Agent private key (same wallet used for x402)
  */
 
 import {
@@ -365,48 +365,6 @@ const GOVERNOR_ABI = [
   },
 ] as const;
 
-const FACTORY_V2_ABI = [
-  {
-    name: "deploy",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "salt", type: "bytes32" },
-      { name: "usdc", type: "address" },
-      { name: "agent", type: "address" },
-      { name: "maxPerTx", type: "uint256" },
-      { name: "dailyLimit", type: "uint256" },
-      { name: "whitelistEnabled", type: "bool" },
-      { name: "shareholders", type: "address[]" },
-      { name: "sharesBps", type: "uint256[]" },
-    ],
-    outputs: [
-      { name: "vault", type: "address" },
-      { name: "token", type: "address" },
-      { name: "gov", type: "address" },
-    ],
-  },
-  {
-    name: "computeAddress",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "salt", type: "bytes32" },
-      { name: "agent", type: "address" },
-      { name: "maxPerTx", type: "uint256" },
-      { name: "dailyLimit", type: "uint256" },
-      { name: "whitelistEnabled", type: "bool" },
-      { name: "shareholders", type: "address[]" },
-      { name: "sharesBps", type: "uint256[]" },
-    ],
-    outputs: [
-      { name: "vault", type: "address" },
-      { name: "token", type: "address" },
-      { name: "gov", type: "address" },
-    ],
-  },
-] as const;
-
 // setCeo / dissolve selectors for governor proposals
 const VAULT_V2_PROPOSAL_ABI = [
   {
@@ -459,98 +417,9 @@ const PROPOSAL_STATES = [
 
 const USDC_ARC: Address = "0x3600000000000000000000000000000000000000";
 
-// ─── 1. Deploy ────────────────────────────────────────────────────────────────
+// deploy removed — V2 vaults are deployed by users from the frontend (ottoarc.xyz)
 
-export interface VaultV2DeployParams {
-  factory_address: string;
-  salt: string;
-  shareholders: string[];
-  shares_bps: number[];
-  max_per_tx_usdc?: number;
-  daily_limit_usdc?: number;
-  whitelist_enabled?: boolean;
-}
-
-export async function handleVaultV2Deploy(params: VaultV2DeployParams): Promise<string> {
-  const {
-    factory_address,
-    salt,
-    shareholders,
-    shares_bps,
-  } = params;
-
-  const maxPerTx = BigInt(Math.round((params.max_per_tx_usdc ?? 10) * 1_000_000));
-  const dailyLimit = BigInt(Math.round((params.daily_limit_usdc ?? 100) * 1_000_000));
-  const whitelistEnabled = params.whitelist_enabled ?? false;
-
-  if (!factory_address?.startsWith("0x")) throw new Error("Invalid factory_address");
-  if (!salt) throw new Error("salt is required");
-  if (!shareholders?.length) throw new Error("shareholders array is required");
-  if (shareholders.length !== shares_bps.length) throw new Error("shareholders and shares_bps must have same length");
-
-  const bpsSum = shares_bps.reduce((a, b) => a + b, 0);
-  if (bpsSum !== 10000) throw new Error(`shares_bps must sum to 10000, got ${bpsSum}`);
-
-  const { client, account } = getAgentWalletClient();
-  const publicClient = getPublicClient();
-
-  const saltBytes = (`0x${Buffer.from(salt).toString("hex").padEnd(64, "0")}`) as `0x${string}`;
-
-  const txHash = await client.writeContract({
-    address: factory_address as Address,
-    abi: FACTORY_V2_ABI,
-    functionName: "deploy",
-    args: [
-      saltBytes,
-      USDC_ARC,
-      account.address,
-      maxPerTx,
-      dailyLimit,
-      whitelistEnabled,
-      shareholders as Address[],
-      shares_bps.map(BigInt),
-    ],
-    account,
-    gas: 10_000_000n,
-  });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
-
-  if (receipt.status !== "success") {
-    return JSON.stringify({ success: false, txHash, reason: "Factory deployment failed" });
-  }
-
-  // Read back addresses via computeAddress
-  const [vault, token, gov] = (await publicClient.readContract({
-    address: factory_address as Address,
-    abi: FACTORY_V2_ABI,
-    functionName: "computeAddress",
-    args: [
-      saltBytes,
-      account.address,
-      maxPerTx,
-      dailyLimit,
-      whitelistEnabled,
-      shareholders as Address[],
-      shares_bps.map(BigInt),
-    ],
-  })) as [Address, Address, Address];
-
-  return JSON.stringify({
-    success: true,
-    vault,
-    share_token: token,
-    governor: gov,
-    ceo: account.address,
-    agent: account.address,
-    shareholders,
-    shares_bps,
-    txHash,
-    explorerUrl: `${EXPLORER_TX}/${txHash}`,
-  }, null, 2);
-}
-
-// ─── 2. Status ────────────────────────────────────────────────────────────────
+// ─── 1. Status ────────────────────────────────────────────────────────────────
 
 export interface VaultV2StatusParams {
   vault_address: string;

@@ -118,7 +118,7 @@ contract OTTOGovernorTest is Test {
     }
 
     function test_VotingPeriod() public view {
-        assertEq(governor.votingPeriod(), 100);
+        assertEq(governor.votingPeriod(), 345_600);
     }
 
     function test_Quorum() public view {
@@ -150,14 +150,11 @@ contract OTTOGovernorTest is Test {
 
         vm.roll(block.number + governor.votingDelay() + 1);
 
-        // Both vote for (100%)
+        // Alice votes for (60% > 51% quorum) — early execution kicks in
         vm.prank(alice);
         governor.castVote(proposalId, 1);
-        vm.prank(bob);
-        governor.castVote(proposalId, 1);
 
-        vm.roll(block.number + governor.votingPeriod() + 1);
-
+        // Execute immediately (no need to wait for voting period)
         _executeDissolve();
 
         assertEq(uint256(vault.vaultState()), uint256(OTTOVaultV2.VaultState.Dissolving));
@@ -178,19 +175,51 @@ contract OTTOGovernorTest is Test {
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
     }
 
+    function test_EarlyExecution_WhenQuorumMet() public {
+        uint256 proposalId = _proposeSetCeo(newCeo);
+
+        // Advance past voting delay only
+        vm.roll(block.number + governor.votingDelay() + 1);
+
+        // Alice votes FOR (60% > 51% quorum)
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+
+        // Do NOT advance to end of voting period — execute immediately
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
+
+        _executeSetCeo(newCeo);
+        assertEq(vault.ceo(), newCeo);
+    }
+
+    function test_NoEarlyExecution_WhenQuorumNotMet() public {
+        uint256 proposalId = _proposeSetCeo(newCeo);
+
+        vm.roll(block.number + governor.votingDelay() + 1);
+
+        // Only bob votes (40% < 51% quorum) — should remain Active
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+    }
+
     function test_VoteWeightProportionalToShares() public {
         uint256 proposalId = _proposeSetCeo(newCeo);
 
         vm.roll(block.number + governor.votingDelay() + 1);
 
-        vm.prank(alice);
-        governor.castVote(proposalId, 1);  // For
+        // Bob votes against first (40%), then alice votes for (60%)
         vm.prank(bob);
         governor.castVote(proposalId, 0);  // Against
 
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        // Still Active (40% for quorum but vote not succeeded)
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
 
-        // Alice 6000e18 for > Bob 4000e18 against → Succeeded
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);  // For
+
+        // Alice 6000e18 for > Bob 4000e18 against → early Succeeded
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
     }
 }

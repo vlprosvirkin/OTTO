@@ -7,6 +7,10 @@ import {OTTOShareToken} from "../src/OTTOShareToken.sol";
 import {OTTOVaultV2} from "../src/OTTOVaultV2.sol";
 import {OTTOGovernor} from "../src/OTTOGovernor.sol";
 import {OTTOVaultFactoryV2} from "../src/OTTOVaultFactoryV2.sol";
+import {OTTORegistry} from "../src/OTTORegistry.sol";
+import {OTTOTokenDeployer} from "../src/deployers/OTTOTokenDeployer.sol";
+import {OTTOGovernorDeployer} from "../src/deployers/OTTOGovernorDeployer.sol";
+import {OTTOVaultDeployer} from "../src/deployers/OTTOVaultDeployer.sol";
 
 contract MockUSDC_Fac is ERC20 {
     constructor() ERC20("USD Coin", "USDC") {}
@@ -16,6 +20,7 @@ contract MockUSDC_Fac is ERC20 {
 
 contract OTTOVaultFactoryV2Test is Test {
     OTTOVaultFactoryV2 factory;
+    OTTORegistry registry;
     MockUSDC_Fac usdc;
 
     address deployer = address(0xD0);
@@ -29,7 +34,20 @@ contract OTTOVaultFactoryV2Test is Test {
     uint256[] sharesBps;
 
     function setUp() public {
-        factory = new OTTOVaultFactoryV2();
+        // Deploy sub-deployers
+        OTTOTokenDeployer    tokenDep = new OTTOTokenDeployer();
+        OTTOGovernorDeployer govDep   = new OTTOGovernorDeployer();
+        OTTOVaultDeployer    vaultDep = new OTTOVaultDeployer();
+        registry = new OTTORegistry();
+
+        // Deploy factory with sub-deployers
+        factory = new OTTOVaultFactoryV2(
+            address(tokenDep),
+            address(govDep),
+            address(vaultDep),
+            address(registry)
+        );
+
         usdc = new MockUSDC_Fac();
 
         shareholders = new address[](2);
@@ -113,5 +131,23 @@ contract OTTOVaultFactoryV2Test is Test {
             salt, address(usdc), agentW, 10e6, 100e6, false,
             shareholders, sharesBps
         );
+    }
+
+    function test_RegisteredInRegistry() public {
+        (address vault, address token, address gov) = _deploy();
+
+        OTTORegistry.DAC memory dac = registry.getDac(salt);
+        assertEq(dac.vault, vault);
+        assertEq(dac.shareToken, token);
+        assertEq(dac.governor, gov);
+        assertEq(dac.ceo, deployer);
+    }
+
+    function test_RegistryReverseLookup() public {
+        (address vault, , ) = _deploy();
+
+        OTTORegistry.DAC memory dac = registry.getDacByVault(vault);
+        assertEq(dac.vault, vault);
+        assertEq(dac.ceo, deployer);
     }
 }

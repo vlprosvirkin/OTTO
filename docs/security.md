@@ -312,15 +312,18 @@ Detection requires only balance polling — no tx parsing, no event subscription
 
 ## Deployed Addresses
 
-### Treasury OTTOVault (shared)
+### OTTOVaultV2 Infrastructure (Arc Testnet, chainId 5042002)
 
-| Chain | Chain ID | Address |
-|-------|---------|---------|
-| Arc Testnet | 5042002 | `0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA` |
-| Base Sepolia | 84532 | `0x47C1feaC66381410f5B050c39F67f15BbD058Af1` |
-| Avalanche Fuji | 43113 | `0x47C1feaC66381410f5B050c39F67f15BbD058Af1` |
+| Contract | Address |
+|----------|---------|
+| OTTOVaultFactoryV2 | `0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe` |
+| OTTORegistry | `0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67` |
+| OTTOTokenDeployer | `0x1A0D1670405B1F193F384C51647a0b4026D0c34b` |
+| OTTOGovernorDeployer | `0x871030f39f386930F3BF951d70371816e9C8b1bd` |
+| OTTOVaultDeployer | `0x07f135206cb3a3a3140e1baBa0953a41214A9825` |
 
-Default limits: **10 USDC / tx · 100 USDC / day**
+Per-user vaults deployed via `factory.deploy()`. Default limits: **10 USDC / tx · 100 USDC / day**
+Governance: shareholders hold ShareToken, govern via Governor proposals.
 
 ### OTTO Agent Wallet
 

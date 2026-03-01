@@ -313,6 +313,51 @@ export function createApp(
     });
   });
 
+  // ─── Governance DAC API ──────────────────────────────────────────────────
+
+  const GOV_PATH = join(OTTO_DIR, "governance.json");
+
+  // GET /api/governance/dacs — list all configured DACs with member counts
+  app.get("/api/governance/dacs", (_req, res) => {
+    if (!existsSync(GOV_PATH)) {
+      res.json({ dacs: [] });
+      return;
+    }
+    try {
+      const raw = JSON.parse(readFileSync(GOV_PATH, "utf8")) as Record<string, unknown>;
+      const dacs = (raw.dacs ?? {}) as Record<string, Record<string, unknown>>;
+      const members = (raw.members ?? {}) as Record<string, Record<string, { eth_address?: string }>>;
+
+      const result = Object.entries(dacs).map(([id, dac]) => {
+        const dacMembers = members[id] ?? {};
+        const shareholders = (dac.shareholders ?? []) as string[];
+        const linkedAddresses = new Set(
+          Object.values(dacMembers).map((m) => (m.eth_address ?? "").toLowerCase())
+        );
+        const allLinked = shareholders.length === 0 ||
+          shareholders.every((s) => linkedAddresses.has(s.toLowerCase()));
+
+        return {
+          id,
+          name: dac.name ?? "DAC",
+          vault_address: dac.vault_address,
+          governor_address: dac.governor_address,
+          share_token_address: dac.share_token_address,
+          shareholders,
+          invite_link: dac.invite_link ?? null,
+          chat_id: dac.chat_id ?? null,
+          member_count: Object.keys(dacMembers).length,
+          shareholder_count: shareholders.length,
+          governance_active: allLinked,
+          created_at: dac.created_at ?? null,
+        };
+      });
+      res.json({ dacs: result });
+    } catch {
+      res.json({ dacs: [] });
+    }
+  });
+
   // ─── Free health check ────────────────────────────────────────────────────
 
   app.get("/health", (_req, res) => {

@@ -1,0 +1,7 @@
+{
+  "chainId": 5042002,
+  "chainName": "Arc Testnet",
+  "rpc": "https://rpc.testnet.arc.network",
+  "explorer": "https://testnet.arcscan.app",
+  "note": "DEPRECATED — V2 uses factory-based deployment. See factory-arc-testnet.json for infrastructure addresses. Individual vaults are deployed per-user via factory.deploy()."
+}

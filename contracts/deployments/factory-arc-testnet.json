@@ -1,0 +1,13 @@
+{
+  "chainId": 5042002,
+  "chainName": "Arc Testnet",
+  "rpc": "https://rpc.testnet.arc.network",
+  "deployedAt": "2026-03-01T01:36:26Z",
+  "factory": "0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe",
+  "registry": "0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67",
+  "deployers": {
+    "token": "0x1A0D1670405B1F193F384C51647a0b4026D0c34b",
+    "governor": "0x871030f39f386930F3BF951d70371816e9C8b1bd",
+    "vault": "0x07f135206cb3a3a3140e1baBa0953a41214A9825"
+  }
+}

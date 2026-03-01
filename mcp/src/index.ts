@@ -54,8 +54,8 @@ import {
   handleVaultCanTransfer,
   handleVaultDeposit,
   handleRebalanceCheck,
-  handleDeployUserVault,
   handleGetUserVault,
+  handleGetDacContracts,
   handleRegisterUserAddress,
   handleGetUserAddress,
   handleTransferVaultAdmin,
@@ -76,7 +76,6 @@ import {
   handleUsycRedeem,
 } from "./tools/usyc.js";
 import {
-  handleVaultV2Deploy,
   handleVaultV2Status,
   handleVaultV2Shareholders,
   handleVaultV2DistributeRevenue,
@@ -105,6 +104,8 @@ import {
   handleGovPropose,
   handleGovVote,
   handleGovTally,
+  handleGovAddMembers,
+  handleGovDacs,
 } from "./tools/governance.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
@@ -506,33 +507,7 @@ server.registerTool(
   })
 );
 
-server.registerTool(
-  "deploy_user_vault",
-  {
-    title: "Deploy a personal OTTOVault for a user",
-    description:
-      "Deploy a new OTTOVault smart contract on testnet linked to a Telegram user_id. " +
-      "The vault enforces per-tx and daily spending limits at the EVM level. " +
-      "Deployment is idempotent — calling again returns the existing address. " +
-      "The agent wallet becomes both admin and agent of the vault. " +
-      "Default: 10 USDC/tx cap, 100 USDC/day limit.",
-    inputSchema: {
-      user_id: z.string().describe("Telegram user ID (numeric string, e.g. '97729005')"),
-      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
-        .describe("Chain to deploy on (default: arcTestnet)"),
-      max_per_tx_usdc: z.number().positive().optional()
-        .describe("Max USDC per single transfer (default: 10)"),
-      daily_limit_usdc: z.number().positive().optional()
-        .describe("Max USDC per day (default: 100)"),
-    },
-  },
-  async ({ user_id, chain, max_per_tx_usdc, daily_limit_usdc }) => ({
-    content: [{
-      type: "text" as const,
-      text: await handleDeployUserVault({ user_id, chain, max_per_tx_usdc, daily_limit_usdc }),
-    }],
-  })
-);
+// deploy_user_vault removed — V2 vaults are deployed by users from the frontend (ottoarc.xyz)
 
 server.registerTool(
   "get_user_vault",
@@ -557,13 +532,37 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_dac_contracts",
+  {
+    title: "Get all DAC contracts for a vault",
+    description:
+      "Resolve all DAC contracts (Vault, ShareToken, Governor, CEO) for a given vault address. " +
+      "Checks local cache first, then falls back to on-chain OTTORegistry.getDacByVault(). " +
+      "Use this to discover the full contract set associated with a user's vault.",
+    inputSchema: {
+      vault_address: z.string().optional().describe("Direct vault address (0x-prefixed)"),
+      user_id: z.string().optional().describe("Telegram user ID to resolve vault from"),
+      eth_address: z.string().optional().describe("User's ETH address to resolve vault from"),
+      chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
+        .describe("Chain to look up (default: arcTestnet)"),
+    },
+  },
+  async ({ vault_address, user_id, eth_address, chain }) => ({
+    content: [{
+      type: "text" as const,
+      text: await handleGetDacContracts({ vault_address, user_id, eth_address, chain }),
+    }],
+  })
+);
+
+server.registerTool(
   "register_user_address",
   {
     title: "Register user's ETH wallet address",
     description:
       "Register a Telegram user's own ETH wallet address. " +
-      "Future vault deployments will set this address as admin (owner) instead of OTTO. " +
-      "For existing custodial vaults, use transfer_vault_admin to hand over control. " +
+      "Future vault deployments will set this address as CEO instead of OTTO. " +
+      "For existing vaults, use transfer_vault_admin to hand over CEO role. " +
       "Validates checksum format. Can be called again to update the address.",
     inputSchema: {
       user_id: z.string().describe("Telegram user ID (numeric string)"),
@@ -592,12 +591,12 @@ server.registerTool(
 server.registerTool(
   "transfer_vault_admin",
   {
-    title: "Transfer vault admin to user's wallet",
+    title: "Transfer vault CEO role to user's wallet",
     description:
-      "Transfer admin ownership of a user's OTTOVault from OTTO to the user's registered ETH address. " +
+      "Transfer CEO role of a user's OTTOVault V2 from OTTO to the user's registered ETH address. " +
       "Requires the user to have called register_user_address first. " +
       "After this, OTTO can no longer change vault limits, whitelist, or pause state. " +
-      "Only works if OTTO is currently the admin (custodial vaults).",
+      "Only works if OTTO is currently the CEO.",
     inputSchema: {
       user_id: z.string().describe("Telegram user ID (numeric string)"),
       chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional()
@@ -614,24 +613,24 @@ server.registerTool(
 server.registerTool(
   "encode_admin_tx",
   {
-    title: "Encode vault admin transaction calldata",
+    title: "Encode vault CEO transaction calldata",
     description:
-      "Encode calldata for an admin-only OTTOVault operation. " +
-      "Admin operations (setLimits, setWhitelist, setPaused, withdraw, etc.) require the vault admin's private key. " +
+      "Encode calldata for a CEO-only OTTOVault V2 operation. " +
+      "CEO operations (setLimits, setWhitelist, setPaused, withdraw, etc.) require the vault CEO's private key. " +
       "Returns the raw calldata that the user must sign and broadcast from their own wallet. " +
       "OTTO cannot execute these — they are protected at the EVM level.",
     inputSchema: {
-      function: z.enum(["setLimits", "setWhitelist", "setWhitelistEnabled", "setAgent", "transferAdmin", "setPaused", "withdraw"])
-        .describe("Admin function to encode"),
+      function: z.enum(["setLimits", "setWhitelist", "setWhitelistEnabled", "setAgent", "transferCeo", "setPaused", "withdraw"])
+        .describe("CEO function to encode"),
       chain: z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]).optional(),
       vault_address: z.string().optional(),
       max_per_tx_usdc: z.number().positive().optional().describe("For setLimits: new per-tx cap in USDC"),
       daily_limit_usdc: z.number().positive().optional().describe("For setLimits: new daily limit in USDC"),
-      address: z.string().optional().describe("For setWhitelist/setAgent/transferAdmin: target address"),
+      address: z.string().optional().describe("For setWhitelist/setAgent/transferCeo: target address"),
       allowed: z.boolean().optional().describe("For setWhitelist: true=add, false=remove"),
       enabled: z.boolean().optional().describe("For setWhitelistEnabled: true=enable, false=disable"),
       paused: z.boolean().optional().describe("For setPaused: true=pause, false=unpause"),
-      new_address: z.string().optional().describe("For setAgent/transferAdmin: new agent or admin address"),
+      new_address: z.string().optional().describe("For setAgent/transferCeo: new agent or CEO address"),
       amount_usdc: z.number().positive().optional().describe("For withdraw: amount in USDC"),
     },
   },
@@ -854,28 +853,7 @@ server.tool(
 
 // ─── OTTOVault V2 Governance Tools ────────────────────────────────────────────
 
-server.registerTool(
-  "v2_deploy",
-  {
-    title: "Deploy V2 governance treasury",
-    description:
-      "Deploy a full V2 governance treasury stack (OTTOVaultV2 + OTTOShareToken + OTTOGovernor) " +
-      "via the factory contract. Shareholders receive governance tokens proportional to their BPS. " +
-      "CEO role is assigned to the deployer. Arc Testnet only.",
-    inputSchema: {
-      factory_address: z.string().describe("OTTOVaultFactoryV2 contract address"),
-      salt: z.string().describe("Human-readable salt for deterministic deployment"),
-      shareholders: z.array(z.string()).min(1).describe("Array of shareholder EVM addresses"),
-      shares_bps: z.array(z.number().int().positive()).min(1).describe("Array of basis points per shareholder (must sum to 10000)"),
-      max_per_tx_usdc: z.number().positive().optional().describe("Max USDC per agent transfer (default: 10)"),
-      daily_limit_usdc: z.number().positive().optional().describe("Max USDC per day (default: 100)"),
-      whitelist_enabled: z.boolean().optional().describe("Enable whitelist on deploy (default: false)"),
-    },
-  },
-  async (p) => ({
-    content: [{ type: "text" as const, text: await handleVaultV2Deploy(p as Parameters<typeof handleVaultV2Deploy>[0]) }],
-  })
-);
+// v2_deploy removed — V2 vaults are deployed by users from the frontend (ottoarc.xyz)
 
 server.tool(
   "v2_status",
@@ -1214,16 +1192,20 @@ server.tool(
   [
     "Configure a DAC (Decentralized Autonomous Company) for chat-based governance.",
     "Sets the V2 vault, governor, and share token addresses.",
-    "Must be called once before any other gov_* tool.",
+    "Supports multiple DACs — each identified by vault_address.",
+    "Optionally set name, shareholders list, invite_link for the Telegram group.",
   ].join(" "),
   {
     vault_address: z.string().describe("OTTOVaultV2 contract address"),
     governor_address: z.string().describe("OTTOGovernor contract address"),
     share_token_address: z.string().describe("OTTOShareToken contract address"),
-    chat_id: z.string().optional().describe("Telegram group chat ID (optional)"),
+    name: z.string().optional().describe("DAC display name (default: 'DAC')"),
+    shareholders: z.array(z.string()).optional().describe("Shareholder addresses (for governance activation gate)"),
+    chat_id: z.string().optional().describe("Telegram group chat ID"),
+    invite_link: z.string().optional().describe("Telegram group invite link"),
   },
-  async ({ vault_address, governor_address, share_token_address, chat_id }) => ({
-    content: [{ type: "text" as const, text: await handleGovSetup({ vault_address, governor_address, share_token_address, chat_id }) }],
+  async ({ vault_address, governor_address, share_token_address, name, shareholders, chat_id, invite_link }) => ({
+    content: [{ type: "text" as const, text: await handleGovSetup({ vault_address, governor_address, share_token_address, name, shareholders, chat_id, invite_link }) }],
   })
 );
 
@@ -1238,9 +1220,10 @@ server.tool(
     user_id: z.string().describe("Telegram user ID (numeric string)"),
     eth_address: z.string().describe("User's ETH wallet address (0x-prefixed)"),
     display_name: z.string().optional().describe("User's display name in chat"),
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
   },
-  async ({ user_id, eth_address, display_name }) => ({
-    content: [{ type: "text" as const, text: await handleGovLink({ user_id, eth_address, display_name }) }],
+  async ({ user_id, eth_address, display_name, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovLink({ user_id, eth_address, display_name, vault_address }) }],
   })
 );
 
@@ -1250,9 +1233,11 @@ server.tool(
     "List all linked DAC members with their on-chain roles, share token balances,",
     "and voting power. Reads live data from the ShareToken contract.",
   ].join(" "),
-  {},
-  async () => ({
-    content: [{ type: "text" as const, text: await handleGovMembers() }],
+  {
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
+  },
+  async ({ vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovMembers({ vault_address }) }],
   })
 );
 
@@ -1264,9 +1249,10 @@ server.tool(
   ].join(" "),
   {
     user_id: z.string().describe("Telegram user ID"),
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
   },
-  async ({ user_id }) => ({
-    content: [{ type: "text" as const, text: await handleGovMyInfo({ user_id }) }],
+  async ({ user_id, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovMyInfo({ user_id, vault_address }) }],
   })
 );
 
@@ -1277,16 +1263,17 @@ server.tool(
     "The proposer must be a linked shareholder with share tokens.",
     "Creates an on-chain proposal via the OTTOGovernor contract.",
     "Supported actions: setCeo (replace CEO), dissolve (start dissolution).",
-    "After creation, other members vote by replying FOR or AGAINST.",
+    "Governance must be active (all shareholders linked) before proposals can be created.",
   ].join(" "),
   {
     user_id: z.string().describe("Telegram user ID of the proposer"),
     action: z.enum(["setCeo", "dissolve"]).describe("Governance action"),
     description: z.string().describe("Human-readable proposal description"),
     new_ceo: z.string().optional().describe("New CEO address (required for setCeo)"),
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
   },
-  async ({ user_id, action, description, new_ceo }) => ({
-    content: [{ type: "text" as const, text: await handleGovPropose({ user_id, action, description, new_ceo }) }],
+  async ({ user_id, action, description, new_ceo, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovPropose({ user_id, action, description, new_ceo, vault_address }) }],
   })
 );
 
@@ -1296,15 +1283,16 @@ server.tool(
     "Cast a vote on an active governance proposal from chat.",
     "One vote per member, weighted by share token holdings.",
     "Support: 0 = Against, 1 = For, 2 = Abstain.",
-    "Returns updated vote tally after recording the vote.",
+    "Governance must be active (all shareholders linked) before voting.",
   ].join(" "),
   {
     user_id: z.string().describe("Telegram user ID of the voter"),
     proposal_id: z.string().describe("On-chain proposal ID"),
     support: z.number().int().min(0).max(2).describe("0=Against, 1=For, 2=Abstain"),
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
   },
-  async ({ user_id, proposal_id, support }) => ({
-    content: [{ type: "text" as const, text: await handleGovVote({ user_id, proposal_id, support }) }],
+  async ({ user_id, proposal_id, support, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovVote({ user_id, proposal_id, support, vault_address }) }],
   })
 );
 
@@ -1317,9 +1305,42 @@ server.tool(
   ].join(" "),
   {
     proposal_id: z.string().optional().describe("Proposal ID (defaults to most recent)"),
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
   },
-  async ({ proposal_id }) => ({
-    content: [{ type: "text" as const, text: await handleGovTally({ proposal_id }) }],
+  async ({ proposal_id, vault_address }) => ({
+    content: [{ type: "text" as const, text: await handleGovTally({ proposal_id, vault_address }) }],
+  })
+);
+
+server.tool(
+  "gov_add_members",
+  [
+    "Batch-add multiple members to a DAC. Admin convenience tool.",
+    "For each member, verifies share token balance > 0 and determines role.",
+    "Members with 0 shares are skipped. Shows governance activation status.",
+  ].join(" "),
+  {
+    vault_address: z.string().optional().describe("Vault address (required if multiple DACs)"),
+    members: z.array(z.object({
+      user_id: z.string().describe("Telegram user ID"),
+      eth_address: z.string().describe("ETH wallet address"),
+      display_name: z.string().optional().describe("Display name"),
+    })).describe("Array of members to add"),
+  },
+  async ({ vault_address, members }) => ({
+    content: [{ type: "text" as const, text: await handleGovAddMembers({ vault_address, members }) }],
+  })
+);
+
+server.tool(
+  "gov_dacs",
+  [
+    "List all configured DACs with member counts, governance status,",
+    "and Telegram invite links. Use to discover available DACs.",
+  ].join(" "),
+  {},
+  async () => ({
+    content: [{ type: "text" as const, text: await handleGovDacs() }],
   })
 );
 

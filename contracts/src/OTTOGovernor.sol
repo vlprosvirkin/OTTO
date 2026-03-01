@@ -17,10 +17,11 @@ import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
  *
  * MVP settings (testnet):
  *   - Voting delay:     1 block
- *   - Voting period:    100 blocks (~5 min on Arc Testnet)
+ *   - Voting period:    345600 blocks (~48 hours on Arc Testnet at 0.5s/block)
  *   - Proposal threshold: 0 (any holder can propose)
  *   - Quorum:           51% of total supply
  *   - No timelock (proposals execute immediately)
+ *   - Early execution: proposals can be executed as soon as quorum is met
  */
 contract OTTOGovernor is
     Governor,
@@ -33,8 +34,24 @@ contract OTTOGovernor is
         Governor("OTTOGovernor")
         GovernorVotes(_token)
         GovernorVotesQuorumFraction(51)
-        GovernorSettings(1, 100, 0)
+        GovernorSettings(1, 345_600, 0)
     {}
+
+    // ─── Early Execution ──────────────────────────────────────────────────────
+
+    /// @notice Allows executing proposals as soon as quorum is reached and vote passes,
+    ///         without waiting for the full 48-hour voting period to end.
+    function state(uint256 proposalId)
+        public view override(Governor) returns (ProposalState)
+    {
+        ProposalState s = super.state(proposalId);
+
+        if (s == ProposalState.Active && _quorumReached(proposalId) && _voteSucceeded(proposalId)) {
+            return ProposalState.Succeeded;
+        }
+
+        return s;
+    }
 
     // ─── Required Diamond Overrides ──────────────────────────────────────────
 

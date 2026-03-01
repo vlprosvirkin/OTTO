@@ -1,24 +1,31 @@
-# OTTOVault — On-Chain Treasury Contract
+# OTTOVaultV2 — On-Chain Treasury Contracts
 
-Solidity smart contract for OTTO's treasury. Enforces spending limits at the EVM level —
-limits that no prompt injection or AI compromise can override.
+Solidity smart contracts for OTTO's treasury. Enforces spending limits at the EVM level —
+limits that no prompt injection or AI compromise can override. V2 adds multi-sig governance
+via ShareToken + Governor — vaults are created per-user through OTTORegistry.
 
-## Deployed
+## Deployed (Arc Testnet, chainId 5042002)
 
-| Chain | Address | USDC |
-|-------|---------|------|
-| Arc Testnet (5042002) | [`0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA`](https://explorer.testnet.arc.network/address/0xFFfeEd6fC75eA575660C6cBe07E09e238Ba7febA) | `0x3600...0000` |
-| Base Sepolia (84532) | [`0x47C1feaC66381410f5B050c39F67f15BbD058Af1`](https://sepolia.basescan.org/address/0x47C1feaC66381410f5B050c39F67f15BbD058Af1) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Avalanche Fuji (43113) | [`0x47C1feaC66381410f5B050c39F67f15BbD058Af1`](https://testnet.snowtrace.io/address/0x47C1feaC66381410f5B050c39F67f15BbD058Af1) | `0x5425890298aed601595a70ab815c96711a31bc65` |
+### Infrastructure (Factory + sub-deployers)
+
+| Contract | Address |
+|----------|---------|
+| OTTOVaultFactoryV2 | [`0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe`](https://testnet.arcscan.app/address/0x9edebee1DfEd0E2727A1Ec64cbB4814A3AEaceCe) |
+| OTTORegistry | [`0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67`](https://testnet.arcscan.app/address/0xbACA262d37A956651E3b35271AF76Bb4eDfc1e67) |
+| OTTOTokenDeployer | [`0x1A0D1670405B1F193F384C51647a0b4026D0c34b`](https://testnet.arcscan.app/address/0x1A0D1670405B1F193F384C51647a0b4026D0c34b) |
+| OTTOGovernorDeployer | [`0x871030f39f386930F3BF951d70371816e9C8b1bd`](https://testnet.arcscan.app/address/0x871030f39f386930F3BF951d70371816e9C8b1bd) |
+| OTTOVaultDeployer | [`0x07f135206cb3a3a3140e1baBa0953a41214A9825`](https://testnet.arcscan.app/address/0x07f135206cb3a3a3140e1baBa0953a41214A9825) |
+
+Individual vaults (VaultV2 + ShareToken + Governor) are deployed per-user via `factory.deploy()`.
 
 ## Security Model
 
-- **Admin**: sets limits, manages whitelist, can pause, can emergency-withdraw
+- **Shareholders**: hold ShareToken, govern vault via Governor (proposals, votes)
 - **Agent** (OTTO): restricted to `transfer()` within hard on-chain limits
-- **Per-tx cap**: 10 USDC (configurable by admin)
+- **Per-tx cap**: 10 USDC (configurable by shareholders)
 - **Daily cap**: 100 USDC / 24h rolling window (configurable)
 - **Whitelist**: optional recipient allowlist
-- **Pause**: admin emergency stop — halts all agent transfers immediately
+- **Pause**: shareholders can halt all agent transfers immediately
 
 ## Stack
 

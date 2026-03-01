@@ -351,7 +351,7 @@ Step 2 — confirm deposit (always requires "да/yes"):
 ```
 Пополнить хранилище на arcTestnet?
 Сумма: 10 USDC (от agent wallet → vault)
-Vault: 0xFFfeEd...
+Vault: 0x1a2b...
 Ответь "да" / "yes"
 ```
 

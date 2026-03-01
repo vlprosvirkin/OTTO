@@ -26,6 +26,9 @@ contract OTTOShareToken is ERC20, ERC20Permit, ERC20Votes {
     /// @notice The vault contract that can freeze this token
     address public vault;
 
+    /// @notice Ordered list of shareholders (set at construction, immutable)
+    address[] private _shareholders;
+
     // ─── Errors ──────────────────────────────────────────────────────────────
 
     error TokensFrozen();
@@ -68,6 +71,7 @@ contract OTTOShareToken is ERC20, ERC20Permit, ERC20Votes {
             uint256 amount = (TOTAL_SUPPLY * sharesBps[i]) / 10_000;
             _mint(shareholders[i], amount);
             _delegate(shareholders[i], shareholders[i]);
+            _shareholders.push(shareholders[i]);
         }
     }
 
@@ -89,6 +93,16 @@ contract OTTOShareToken is ERC20, ERC20Permit, ERC20Votes {
         if (msg.sender != vault) revert NotVault();
         frozen = true;
         emit Frozen();
+    }
+
+    // ─── Shareholder Enumeration ──────────────────────────────────────────────
+
+    function getShareholders() external view returns (address[] memory) {
+        return _shareholders;
+    }
+
+    function shareholderCount() external view returns (uint256) {
+        return _shareholders.length;
     }
 
     // ─── Required Overrides ──────────────────────────────────────────────────

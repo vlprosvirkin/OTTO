@@ -353,46 +353,24 @@ contract OTTOVaultV2Test is Test {
         vault.transfer(alice, 1e6);
     }
 
-    function test_Finalize_LocksPool() public {
+    function test_Finalize_AutoDistributes() public {
         vm.prank(gov);
         vault.dissolve();
 
         vault.finalize();
 
+        // State checks
         assertEq(uint256(vault.vaultState()), uint256(OTTOVaultV2.VaultState.Dissolved));
         assertEq(vault.dissolutionPool(), 200e6);  // setUp funded 200
         assertEq(shareToken.frozen(), true);
-    }
 
-    function test_ClaimDissolution_ProRata() public {
-        vm.prank(gov);
-        vault.dissolve();
-        vault.finalize();
+        // Pro-rata auto-distribution: alice 50%, bob 30%, charlie 20%
+        assertEq(usdc.balanceOf(alice), 100e6);
+        assertEq(usdc.balanceOf(bob), 60e6);
+        assertEq(usdc.balanceOf(charlie), 40e6);
 
-        vm.prank(alice);
-        vault.claimDissolution();
-        assertEq(usdc.balanceOf(alice), 100e6);  // 50% of 200
-
-        vm.prank(bob);
-        vault.claimDissolution();
-        assertEq(usdc.balanceOf(bob), 60e6);  // 30% of 200
-
-        vm.prank(charlie);
-        vault.claimDissolution();
-        assertEq(usdc.balanceOf(charlie), 40e6);  // 20% of 200
-    }
-
-    function test_DoubleDissolutionClaim_Reverts() public {
-        vm.prank(gov);
-        vault.dissolve();
-        vault.finalize();
-
-        vm.prank(alice);
-        vault.claimDissolution();
-
-        vm.prank(alice);
-        vm.expectRevert(OTTOVaultV2.AlreadyClaimed.selector);
-        vault.claimDissolution();
+        // Vault should be empty
+        assertEq(usdc.balanceOf(address(vault)), 0);
     }
 
     function test_TransferBlockedAfterDissolved() public {

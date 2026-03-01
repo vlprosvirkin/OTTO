@@ -299,34 +299,42 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     return handleVaultV2Finalize(a as { vault_address: string });
   },
 
-  // ── Chat Governance (no Supabase) ──────────────────────────────────────
+  // ── Chat Governance (multi-DAC) ──────────────────────────────────────
   gov_setup: async (a) => {
     const { handleGovSetup } = await import(`${MCP}/governance.js`);
-    return handleGovSetup(a as { vault_address: string; governor_address: string; share_token_address: string; chat_id?: string });
+    return handleGovSetup(a as { vault_address: string; governor_address: string; share_token_address: string; name?: string; shareholders?: string[]; chat_id?: string; invite_link?: string });
   },
   gov_link: async (a) => {
     const { handleGovLink } = await import(`${MCP}/governance.js`);
-    return handleGovLink(a as { user_id: string; eth_address: string; display_name?: string });
+    return handleGovLink(a as { user_id: string; eth_address: string; display_name?: string; vault_address?: string });
   },
-  gov_members: async () => {
+  gov_members: async (a) => {
     const { handleGovMembers } = await import(`${MCP}/governance.js`);
-    return handleGovMembers();
+    return handleGovMembers(a as { vault_address?: string });
   },
   gov_my_info: async (a) => {
     const { handleGovMyInfo } = await import(`${MCP}/governance.js`);
-    return handleGovMyInfo(a as { user_id: string });
+    return handleGovMyInfo(a as { user_id: string; vault_address?: string });
   },
   gov_propose: async (a) => {
     const { handleGovPropose } = await import(`${MCP}/governance.js`);
-    return handleGovPropose(a as { user_id: string; action: "setCeo" | "dissolve"; description: string; new_ceo?: string });
+    return handleGovPropose(a as { user_id: string; action: "setCeo" | "dissolve"; description: string; new_ceo?: string; vault_address?: string });
   },
   gov_vote: async (a) => {
     const { handleGovVote } = await import(`${MCP}/governance.js`);
-    return handleGovVote(a as { user_id: string; proposal_id: string; support: number });
+    return handleGovVote(a as { user_id: string; proposal_id: string; support: number; vault_address?: string });
   },
   gov_tally: async (a) => {
     const { handleGovTally } = await import(`${MCP}/governance.js`);
-    return handleGovTally(a as { proposal_id?: string });
+    return handleGovTally(a as { proposal_id?: string; vault_address?: string });
+  },
+  gov_add_members: async (a) => {
+    const { handleGovAddMembers } = await import(`${MCP}/governance.js`);
+    return handleGovAddMembers(a as { vault_address?: string; members: Array<{ user_id: string; eth_address: string; display_name?: string }> });
+  },
+  gov_dacs: async () => {
+    const { handleGovDacs } = await import(`${MCP}/governance.js`);
+    return handleGovDacs();
   },
 };
 
