@@ -789,9 +789,8 @@ bash {skills}/arc-governance/scripts/v2_deploy.sh <factory> <salt> <shareholders
 bash {skills}/arc-governance/scripts/v2_status.sh <vault_address>
 bash {skills}/arc-governance/scripts/v2_shareholders.sh <vault_address> <shareholders_csv>
 
-# Revenue
+# Revenue (auto-transfers to all shareholders)
 bash {skills}/arc-governance/scripts/v2_distribute_revenue.sh <vault_address> <amount_usdc>
-bash {skills}/arc-governance/scripts/v2_claim_revenue.sh <vault_address>
 
 # Yield management (CEO)
 bash {skills}/arc-governance/scripts/v2_invest_yield.sh <vault_address> <amount_usdc>

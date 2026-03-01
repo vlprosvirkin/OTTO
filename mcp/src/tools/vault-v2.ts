@@ -67,20 +67,6 @@ const VAULT_V2_ABI = [
     ],
   },
   {
-    name: "rewardPerTokenStored",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "pendingRevenue",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
     name: "vaultState",
     type: "function",
     stateMutability: "view",
@@ -113,13 +99,6 @@ const VAULT_V2_ABI = [
     type: "function",
     stateMutability: "nonpayable",
     inputs: [{ name: "amount", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    name: "claimRevenue",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
     outputs: [],
   },
   {
@@ -524,13 +503,6 @@ export async function handleVaultV2Shareholders(params: VaultV2ShareholdersParam
         args: [addr as Address],
       })) as bigint;
 
-      const pending = (await client.readContract({
-        address: vault_address as Address,
-        abi: VAULT_V2_ABI,
-        functionName: "pendingRevenue",
-        args: [addr as Address],
-      })) as bigint;
-
       const pct = totalSupply > 0n ? (Number(balance) / Number(totalSupply) * 100).toFixed(2) : "0.00";
 
       return {
@@ -538,7 +510,6 @@ export async function handleVaultV2Shareholders(params: VaultV2ShareholdersParam
         shares: formatTokens(balance),
         percentage: pct,
         votes: formatTokens(votes),
-        pending_revenue_usdc: formatUsdc(pending),
       };
     })
   );
@@ -586,50 +557,7 @@ export async function handleVaultV2DistributeRevenue(params: VaultV2DistributeRe
   }, null, 2);
 }
 
-// ─── 5. Claim Revenue ─────────────────────────────────────────────────────────
-
-export interface VaultV2ClaimRevenueParams {
-  vault_address: string;
-}
-
-export async function handleVaultV2ClaimRevenue(params: VaultV2ClaimRevenueParams): Promise<string> {
-  const { vault_address } = params;
-  if (!vault_address?.startsWith("0x")) throw new Error("vault_address is required");
-
-  const { client, account } = getAgentWalletClient();
-  const publicClient = getPublicClient();
-
-  // Check pending first
-  const pending = (await publicClient.readContract({
-    address: vault_address as Address,
-    abi: VAULT_V2_ABI,
-    functionName: "pendingRevenue",
-    args: [account.address],
-  })) as bigint;
-
-  if (pending === 0n) {
-    return JSON.stringify({ success: false, reason: "No pending revenue to claim", vault: vault_address });
-  }
-
-  const txHash = await client.writeContract({
-    address: vault_address as Address,
-    abi: VAULT_V2_ABI,
-    functionName: "claimRevenue",
-    account,
-  });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
-
-  return JSON.stringify({
-    success: receipt.status === "success",
-    claimed_usdc: formatUsdc(pending),
-    txHash,
-    vault: vault_address,
-    explorerUrl: `${EXPLORER_TX}/${txHash}`,
-  }, null, 2);
-}
-
-// ─── 6. Propose ───────────────────────────────────────────────────────────────
+// ─── 5. Propose ───────────────────────────────────────────────────────────────
 
 export interface VaultV2ProposeParams {
   vault_address: string;

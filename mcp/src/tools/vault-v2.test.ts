@@ -42,7 +42,6 @@ import {
   handleVaultV2Pause,
   handleVaultV2Finalize,
   handleVaultV2DistributeRevenue,
-  handleVaultV2ClaimRevenue,
   handleVaultV2Shareholders,
   handleVaultV2DissolveStatus,
 } from "./vault-v2.js";
@@ -181,12 +180,6 @@ describe("Input validation", () => {
     await expect(
       handleVaultV2DistributeRevenue({ vault_address: VAULT_ADDR, amount_usdc: 0 })
     ).rejects.toThrow("amount_usdc must be positive");
-  });
-
-  it("v2_claim_revenue rejects missing vault_address", async () => {
-    await expect(
-      handleVaultV2ClaimRevenue({ vault_address: "" })
-    ).rejects.toThrow("vault_address is required");
   });
 
   it("v2_status rejects missing vault_address", async () => {
@@ -549,45 +542,6 @@ describe("handleVaultV2DistributeRevenue", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// handleVaultV2ClaimRevenue
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("handleVaultV2ClaimRevenue", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.X402_PAYER_PRIVATE_KEY =
-      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-  });
-
-  it("claims revenue when pending > 0", async () => {
-    const readContract = vi.fn().mockResolvedValue(50_000_000n); // 50 USDC pending
-
-    const { writeContract } = setupMocks({ readContract });
-    writeContract.mockResolvedValue("0xclaimtxhash");
-
-    const result = JSON.parse(
-      await handleVaultV2ClaimRevenue({ vault_address: VAULT_ADDR })
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.claimed_usdc).toBe("50.000000");
-  });
-
-  it("returns error when no pending revenue", async () => {
-    const readContract = vi.fn().mockResolvedValue(0n);
-
-    setupMocks({ readContract });
-
-    const result = JSON.parse(
-      await handleVaultV2ClaimRevenue({ vault_address: VAULT_ADDR })
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.reason).toContain("No pending revenue");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // handleVaultV2Shareholders
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -611,7 +565,6 @@ describe("handleVaultV2Shareholders", () => {
       const data = shareholderData[addr];
       if (functionName === "balanceOf") return Promise.resolve(data?.balance ?? 0n);
       if (functionName === "getVotes") return Promise.resolve(data?.votes ?? 0n);
-      if (functionName === "pendingRevenue") return Promise.resolve(data?.pending ?? 0n);
       return Promise.resolve(0n);
     });
 
@@ -627,7 +580,6 @@ describe("handleVaultV2Shareholders", () => {
     expect(result.shareholders).toHaveLength(2);
     expect(result.shareholders[0].percentage).toBe("60.00");
     expect(result.shareholders[1].percentage).toBe("40.00");
-    expect(result.shareholders[0].pending_revenue_usdc).toBe("30.000000");
   });
 });
 

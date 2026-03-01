@@ -116,13 +116,8 @@ pause
 run "CEO distributes 20 USDC as revenue to shareholders" \
   invoke v2_distribute_revenue "{\"vault_address\":\"$VAULT\",\"amount_usdc\":20}"
 
-run "Check pending revenue per shareholder" \
+run "Check shareholder balances after revenue distribution" \
   invoke v2_shareholders "{\"vault_address\":\"$VAULT\",\"shareholders\":[\"$AGENT_ADDR\",\"$SHAREHOLDER_2\"]}"
-
-pause
-
-run "Agent claims their revenue share" \
-  invoke v2_claim_revenue "{\"vault_address\":\"$VAULT\"}"
 
 pause
 

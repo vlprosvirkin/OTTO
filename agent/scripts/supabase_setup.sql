@@ -41,3 +41,30 @@ CREATE TABLE IF NOT EXISTS public.transaction_history (
 
 CREATE INDEX IF NOT EXISTS idx_tx_user_status     ON public.transaction_history(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_tx_created_at      ON public.transaction_history(created_at DESC);
+
+-- ── OTTO Users ───────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.otto_users (
+    user_id         TEXT        PRIMARY KEY,              -- Telegram ID or eth_address fallback
+    eth_address     TEXT        UNIQUE,                   -- wallet address (lowercase)
+    tg_id           BIGINT,
+    tg_username     TEXT,
+    tg_first_name   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_otto_users_eth ON public.otto_users(eth_address);
+
+-- ── OTTO Vaults ──────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.otto_vaults (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         TEXT        NOT NULL REFERENCES public.otto_users(user_id) ON DELETE CASCADE,
+    chain           TEXT        NOT NULL
+                                CHECK (chain IN ('arcTestnet', 'baseSepolia', 'avalancheFuji')),
+    vault_address   TEXT        NOT NULL,                 -- lowercase
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, chain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_otto_vaults_user ON public.otto_vaults(user_id);

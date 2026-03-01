@@ -22,6 +22,7 @@ import {
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { arcTestnet } from "../lib/circle/gateway-sdk.js";
+import { supabase } from "../lib/supabase/client.js";
 
 // ─── ABIs (subset — only what we need for reads) ────────────────────────────
 
@@ -239,17 +240,12 @@ function saveGov(state: GovState): void {
   writeFileSync(GOV_PATH, JSON.stringify(state, null, 2));
 }
 
-// Also sync to users.json for compatibility with vault.ts
-const USERS_PATH = join(OTTO_DIR, "users.json");
-
-function syncUserRegistry(userId: string, ethAddress: string): void {
-  let users: Record<string, { eth_address?: string }> = {};
-  if (existsSync(USERS_PATH)) {
-    try { users = JSON.parse(readFileSync(USERS_PATH, "utf8")); } catch { /* */ }
-  }
-  users[userId] = { eth_address: ethAddress };
-  mkdirSync(OTTO_DIR, { recursive: true });
-  writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+// Sync user to Supabase otto_users table
+async function syncUserRegistry(userId: string, ethAddress: string): Promise<void> {
+  await supabase.from("otto_users").upsert(
+    { user_id: userId, eth_address: ethAddress.toLowerCase() },
+    { onConflict: "user_id" }
+  );
 }
 
 /** Resolve which DAC to use. If vault_address is given, use it. Otherwise default to the only DAC. */
@@ -451,7 +447,7 @@ export async function handleGovLink(params: GovLinkParams): Promise<string> {
     linked_at: new Date().toISOString(),
   };
   saveGov(state);
-  syncUserRegistry(user_id, addr);
+  await syncUserRegistry(user_id, addr);
 
   // Check governance gate status after linking
   const gate = checkGovernanceGate(state, id);
@@ -949,7 +945,7 @@ export async function handleGovAddMembers(params: GovAddMembersParams): Promise<
       display_name: entry.display_name ?? `User ${entry.user_id}`,
       linked_at: new Date().toISOString(),
     };
-    syncUserRegistry(entry.user_id, addr);
+    await syncUserRegistry(entry.user_id, addr);
 
     results.push(`- ${entry.display_name ?? entry.user_id}: ${role}, ${formatTokens(balance)} shares (${pct}%)`);
     linked++;

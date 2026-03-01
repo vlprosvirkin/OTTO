@@ -79,7 +79,6 @@ import {
   handleVaultV2Status,
   handleVaultV2Shareholders,
   handleVaultV2DistributeRevenue,
-  handleVaultV2ClaimRevenue,
   handleVaultV2Propose,
   handleVaultV2Vote,
   handleVaultV2Execute,
@@ -888,7 +887,7 @@ server.registerTool(
     title: "Get V2 shareholder details",
     description:
       "Get detailed shareholder information for a V2 vault: " +
-      "token balance, ownership %, voting power, and pending revenue per holder.",
+      "token balance, ownership %, and voting power per holder.",
     inputSchema: {
       vault_address: z.string().describe("OTTOVaultV2 contract address"),
       shareholders: z.array(z.string()).min(1).describe("Array of shareholder addresses to query"),
@@ -905,8 +904,7 @@ server.registerTool(
     title: "Distribute revenue to shareholders",
     description:
       "CEO: distribute USDC revenue to all shareholders proportional to their token holdings. " +
-      "Uses the Synthetix staking-rewards pattern — O(1) gas regardless of shareholder count. " +
-      "Shareholders claim with v2_claim_revenue.",
+      "Auto-transfers USDC directly to each shareholder in one transaction.",
     inputSchema: {
       vault_address: z.string().describe("OTTOVaultV2 contract address"),
       amount_usdc: z.number().positive().describe("Amount of USDC to distribute"),
@@ -914,21 +912,6 @@ server.registerTool(
   },
   async ({ vault_address, amount_usdc }) => ({
     content: [{ type: "text" as const, text: await handleVaultV2DistributeRevenue({ vault_address, amount_usdc }) }],
-  })
-);
-
-server.tool(
-  "v2_claim_revenue",
-  [
-    "Claim pending revenue from a V2 vault.",
-    "Transfers accumulated USDC to the caller based on their share token holdings.",
-    "Check v2_shareholders first to see pending amounts.",
-  ].join(" "),
-  {
-    vault_address: z.string().describe("OTTOVaultV2 contract address"),
-  },
-  async ({ vault_address }) => ({
-    content: [{ type: "text" as const, text: await handleVaultV2ClaimRevenue({ vault_address }) }],
   })
 );
 

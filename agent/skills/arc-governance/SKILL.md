@@ -57,11 +57,8 @@ bash {skills}/arc-governance/scripts/v2_shareholders.sh <vault_address> <shareho
 ### Revenue Distribution
 
 ```bash
-# CEO: distribute revenue to shareholders
+# CEO: distribute revenue to shareholders (auto-transfers USDC to each shareholder)
 bash {skills}/arc-governance/scripts/v2_distribute_revenue.sh <vault_address> <amount_usdc>
-
-# Claim pending revenue
-bash {skills}/arc-governance/scripts/v2_claim_revenue.sh <vault_address>
 ```
 
 ### Yield Management

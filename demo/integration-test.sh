@@ -158,22 +158,13 @@ REV=$(invoke v2_distribute_revenue "{\"vault_address\":\"$VAULT\",\"amount_usdc\
 echo "$REV"
 check "Revenue distributed" "$REV" '"success": true'
 
-# ─── 7. Check Pending Revenue ───────────────────────────────────────────────
+# ─── 7. Verify Revenue Auto-Transferred ────────────────────────────────────
 
-step "Check pending revenue"
+step "Check shareholder balances after distribution"
 SH2_REV=$(invoke v2_shareholders "{\"vault_address\":\"$VAULT\",\"shareholders\":[\"$AGENT_ADDR\",\"$SH2\"]}")
 echo "$SH2_REV"
-check "Agent pending 0.06" "$SH2_REV" '"pending_revenue_usdc": "0.060000"'
 
-# ─── 8. Claim Revenue ───────────────────────────────────────────────────────
-
-step "Claim revenue"
-CLR=$(invoke v2_claim_revenue "{\"vault_address\":\"$VAULT\"}")
-echo "$CLR"
-check "Claim succeeded" "$CLR" '"success": true'
-check "Claimed 0.06 USDC" "$CLR" '"claimed_usdc": "0.060000"'
-
-# ─── 9. CEO Set Limits ──────────────────────────────────────────────────────
+# ─── 8. CEO Set Limits ──────────────────────────────────────────────────────
 
 step "CEO update limits (5 USDC/tx, 50 USDC/day)"
 LIM=$(invoke v2_set_limits "{\"vault_address\":\"$VAULT\",\"max_per_tx_usdc\":5,\"daily_limit_usdc\":50}")

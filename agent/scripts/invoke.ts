@@ -234,10 +234,6 @@ const HANDLERS: Record<string, (args: AnyArgs) => Promise<string>> = {
     const { handleVaultV2DistributeRevenue } = await import(`${MCP}/vault-v2.js`);
     return handleVaultV2DistributeRevenue(a as { vault_address: string; amount_usdc: number });
   },
-  v2_claim_revenue: async (a) => {
-    const { handleVaultV2ClaimRevenue } = await import(`${MCP}/vault-v2.js`);
-    return handleVaultV2ClaimRevenue(a as { vault_address: string });
-  },
   v2_propose: async (a) => {
     const { handleVaultV2Propose } = await import(`${MCP}/vault-v2.js`);
     return handleVaultV2Propose(a as { vault_address: string; governor_address: string; action: "setCeo" | "dissolve"; new_ceo?: string; description: string });

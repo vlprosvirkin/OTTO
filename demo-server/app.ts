@@ -5,41 +5,35 @@
 
 import express, { type RequestHandler } from "express";
 import { createHmac, createHash } from "crypto";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createClient } from "@supabase/supabase-js";
 
-// ─── User registry (shared with MCP tools — ~/.otto/users.json) ─────────────
+// ─── Supabase client ─────────────────────────────────────────────────────────
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+const mockClient = {
+  from: () => ({
+    select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: null }), order: () => Promise.resolve({ data: [], error: null }) }) }),
+    upsert: () => Promise.resolve({ data: null, error: null }),
+    insert: () => Promise.resolve({ data: null, error: null }),
+    delete: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }),
+  }),
+} as any;
+
+const supabase = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey)
+  : mockClient;
+
+// ─── User / vault registry (Supabase) ───────────────────────────────────────
 
 const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
-const USERS_PATH = join(OTTO_DIR, "users.json");
-const USER_VAULTS_PATH = join(OTTO_DIR, "user-vaults.json");
 
-type UserRecord = { eth_address?: string; tg_id?: number; tg_username?: string; tg_first_name?: string };
-type UserRegistry = Record<string, UserRecord>;
-type VaultRegistry = Record<string, Partial<Record<string, string>>>;
-
-function loadUsers(): UserRegistry {
-  if (!existsSync(USERS_PATH)) return {};
-  try { return JSON.parse(readFileSync(USERS_PATH, "utf8")); } catch { return {}; }
-}
-
-function saveUsers(registry: UserRegistry): void {
-  mkdirSync(OTTO_DIR, { recursive: true });
-  writeFileSync(USERS_PATH, JSON.stringify(registry, null, 2));
-}
-
-function loadVaults(): VaultRegistry {
-  if (!existsSync(USER_VAULTS_PATH)) return {};
-  try { return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8")); } catch { return {}; }
-}
-
-function saveVaults(registry: VaultRegistry): void {
-  mkdirSync(OTTO_DIR, { recursive: true });
-  writeFileSync(USER_VAULTS_PATH, JSON.stringify(registry, null, 2));
-}
 
 // ─── Telegram auth verification ──────────────────────────────────────────────
 
@@ -230,16 +224,14 @@ export function createApp(
       return;
     }
 
-    const registry = loadUsers();
     const key = String(tg.id);
-    registry[key] = {
-      ...registry[key],
+    await supabase.from("otto_users").upsert({
+      user_id: key,
       eth_address: address.toLowerCase(),
       tg_id: tg.id,
       tg_username: tg.username,
       tg_first_name: tg.first_name,
-    };
-    saveUsers(registry);
+    }, { onConflict: "user_id" });
 
     // Send welcome message via Telegram with vault info
     sendBindNotification(tg.id, address, tg.first_name, vaults).catch(() => {});
@@ -248,10 +240,13 @@ export function createApp(
   });
 
   // GET /api/user/:address  — look up binding by wallet address
-  app.get("/api/user/:address", (req, res) => {
+  app.get("/api/user/:address", async (req, res) => {
     const addr = req.params.address.toLowerCase();
-    const registry = loadUsers();
-    const entry = Object.values(registry).find((u) => u.eth_address === addr);
+    const { data: entry } = await supabase
+      .from("otto_users")
+      .select("*")
+      .eq("eth_address", addr)
+      .single();
     if (!entry) {
       res.json({ bound: false });
       return;
@@ -265,7 +260,7 @@ export function createApp(
   });
 
   // POST /api/vaults  — save deployed vault addresses for a wallet
-  app.post("/api/vaults", (req, res) => {
+  app.post("/api/vaults", async (req, res) => {
     const { address, vaults } = req.body as {
       address?: string;
       vaults?: Partial<Record<string, string>>;
@@ -275,59 +270,80 @@ export function createApp(
       return;
     }
 
-    const users = loadUsers();
-    const userId = Object.keys(users).find((id) => users[id].eth_address === address.toLowerCase());
+    // Find existing user by eth_address, or create minimal record
+    const { data: existing } = await supabase
+      .from("otto_users")
+      .select("user_id")
+      .eq("eth_address", address.toLowerCase())
+      .single();
 
-    // If user is not registered yet, create a minimal record keyed by address
-    const key = userId ?? address.toLowerCase();
-    if (!userId) {
-      users[key] = { eth_address: address.toLowerCase() };
-      saveUsers(users);
+    const key = existing?.user_id ?? address.toLowerCase();
+    if (!existing) {
+      await supabase.from("otto_users").upsert(
+        { user_id: key, eth_address: address.toLowerCase() },
+        { onConflict: "user_id" }
+      );
     }
 
-    const registry = loadVaults();
-    registry[key] = { ...registry[key], ...vaults };
-    saveVaults(registry);
+    // Upsert each vault
+    const upserts = Object.entries(vaults).map(([chain, vault_address]) =>
+      supabase.from("otto_vaults").upsert(
+        { user_id: key, chain, vault_address: (vault_address as string).toLowerCase() },
+        { onConflict: "user_id,chain" }
+      )
+    );
+    await Promise.all(upserts);
 
-    res.json({ ok: true, user_id: key, vaults: registry[key] });
+    // Return all vaults for this user
+    const { data: allVaults } = await supabase
+      .from("otto_vaults")
+      .select("chain, vault_address")
+      .eq("user_id", key);
+    const vaultMap = Object.fromEntries((allVaults ?? []).map((r: any) => [r.chain, r.vault_address]));
+
+    res.json({ ok: true, user_id: key, vaults: vaultMap });
   });
 
   // GET /api/vaults/:address  — look up deployed vaults by wallet address
-  app.get("/api/vaults/:address", (req, res) => {
+  app.get("/api/vaults/:address", async (req, res) => {
     const addr = req.params.address.toLowerCase();
-    const users = loadUsers();
-    const vaultRegistry = loadVaults();
 
     // Find user_id by eth_address
-    const userId = Object.keys(users).find((id) => users[id].eth_address === addr);
-    if (!userId) {
+    const { data: user } = await supabase
+      .from("otto_users")
+      .select("user_id")
+      .eq("eth_address", addr)
+      .single();
+    if (!user) {
       res.json({ found: false, vaults: {} });
       return;
     }
 
-    const vaults = vaultRegistry[userId] ?? {};
-    res.json({
-      found: true,
-      user_id: userId,
-      vaults, // { arcTestnet: "0x...", baseSepolia: "0x...", ... }
-    });
+    const { data: vaultRows } = await supabase
+      .from("otto_vaults")
+      .select("chain, vault_address")
+      .eq("user_id", user.user_id);
+    const vaults = Object.fromEntries((vaultRows ?? []).map((r: any) => [r.chain, r.vault_address]));
+
+    res.json({ found: true, user_id: user.user_id, vaults });
   });
 
   // DELETE /api/vaults/:address  — clear all deployed vault addresses for a wallet
-  app.delete("/api/vaults/:address", (req, res) => {
+  app.delete("/api/vaults/:address", async (req, res) => {
     const addr = req.params.address.toLowerCase();
-    const users = loadUsers();
-    const vaultRegistry = loadVaults();
 
-    const userId = Object.keys(users).find((id) => users[id].eth_address === addr);
-    if (!userId) {
+    const { data: user } = await supabase
+      .from("otto_users")
+      .select("user_id")
+      .eq("eth_address", addr)
+      .single();
+    if (!user) {
       res.json({ ok: true, message: "no user found, nothing to clear" });
       return;
     }
 
-    delete vaultRegistry[userId];
-    saveVaults(vaultRegistry);
-    res.json({ ok: true, user_id: userId, message: "vaults cleared" });
+    await supabase.from("otto_vaults").delete().eq("user_id", user.user_id);
+    res.json({ ok: true, user_id: user.user_id, message: "vaults cleared" });
   });
 
   // ─── Governance DAC API ──────────────────────────────────────────────────
@@ -376,7 +392,7 @@ export function createApp(
   });
 
   // POST /api/governance/dacs — register a new DAC after factory deploy
-  app.post("/api/governance/dacs", (req, res) => {
+  app.post("/api/governance/dacs", async (req, res) => {
     const {
       vault_address, governor_address, share_token_address,
       shareholders, name, deployer, satellite_vaults,
@@ -427,12 +443,13 @@ export function createApp(
 
     // Auto-link deployer as member if they match a known user
     if (deployer) {
-      const users = loadUsers();
-      const userId = Object.keys(users).find(
-        (uid) => users[uid].eth_address === deployer.toLowerCase(),
-      );
-      if (userId) {
-        members[id] = { [userId]: { eth_address: deployer.toLowerCase() } };
+      const { data: userRow } = await supabase
+        .from("otto_users")
+        .select("user_id")
+        .eq("eth_address", deployer.toLowerCase())
+        .single();
+      if (userRow) {
+        members[id] = { [userRow.user_id]: { eth_address: deployer.toLowerCase() } };
       }
     }
 

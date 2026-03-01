@@ -297,9 +297,8 @@ This is the **earn** side of the autonomous treasury cycle: monitor → earn →
 | `rebalance_check` 🔄 | Check vault balances on all chains, report health + shortfall |
 | `v2_deploy` ⚖️ | Deploy full V2 governance stack (VaultV2 + ShareToken + Governor) |
 | `v2_status` ⚖️ | Full V2 vault state: CEO, agent, governor, share token, balances |
-| `v2_shareholders` ⚖️ | Shareholder list with share balances, voting power, revenue claims |
-| `v2_distribute_revenue` ⚖️ | Distribute USDC revenue to all shareholders pro-rata |
-| `v2_claim_revenue` ⚖️ | Claim accumulated revenue for a shareholder |
+| `v2_shareholders` ⚖️ | Shareholder list with share balances and voting power |
+| `v2_distribute_revenue` ⚖️ | Distribute USDC revenue to all shareholders pro-rata (auto-transfer) |
 | `v2_propose` ⚖️ | Create governance proposal (setCeo / dissolve) via OTTOGovernor |
 | `v2_vote` ⚖️ | Cast governance vote (For / Against / Abstain) with token weight |
 | `v2_execute` ⚖️ | Execute passed governance proposal on-chain |

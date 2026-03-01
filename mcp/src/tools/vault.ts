@@ -28,6 +28,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { randomBytes } from "crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import { supabase } from "../lib/supabase/client.js";
 
 import { baseSepolia, avalancheFuji } from "viem/chains";
 import { arcTestnet } from "../lib/circle/gateway-sdk.js";
@@ -230,22 +231,17 @@ function resolveChain(chain?: string): SupportedChain {
 async function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string, userId?: string, ethAddress?: string): Promise<Address> {
   if (vaultAddress) return vaultAddress as Address;
 
-  const registry = loadUserVaults();
-
   // Direct lookup by user_id
   if (userId) {
-    const addr = registry[userId]?.[chain];
+    const addr = await getVaultFromDb(userId, chain);
     if (addr) return addr as Address;
   }
 
-  // Reverse lookup by eth_address: find user_id in users.json, then check registry
+  // Reverse lookup by eth_address: find user_id in otto_users, then check vaults
   if (ethAddress) {
-    const users = loadUsers();
-    const foundId = Object.entries(users).find(
-      ([, u]) => u.eth_address?.toLowerCase() === ethAddress.toLowerCase()
-    )?.[0];
+    const foundId = await getUserByAddress(ethAddress);
     if (foundId) {
-      const addr = registry[foundId]?.[chain];
+      const addr = await getVaultFromDb(foundId, chain);
       if (addr) return addr as Address;
     }
   }
@@ -265,9 +261,7 @@ async function resolveVaultAddress(chain: SupportedChain, vaultAddress?: string,
       if (dac.vault && dac.vault !== "0x0000000000000000000000000000000000000000") {
         // Found on-chain! Cache vault address + all DAC contracts
         const uid = userId ?? ethAddress.toLowerCase();
-        if (!registry[uid]) registry[uid] = {};
-        registry[uid][chain] = dac.vault;
-        saveUserVaults(registry);
+        await upsertVault(uid, chain, dac.vault);
         cacheDacContracts({
           vault: dac.vault,
           shareToken: dac.shareToken,
@@ -665,27 +659,44 @@ export async function handleRebalanceCheck(params: RebalanceCheckParams): Promis
 // ─── Registry helpers ────────────────────────────────────────────────────────
 
 const OTTO_DIR = join(process.env.HOME ?? "/tmp", ".otto");
-const USER_VAULTS_PATH = join(OTTO_DIR, "user-vaults.json");
 const DAC_CONTRACTS_PATH = join(OTTO_DIR, "dac-contracts.json");
-const USERS_PATH       = join(OTTO_DIR, "users.json");
 const INVOICES_PATH    = join(OTTO_DIR, "invoices.json");
 
 function ottoDirEnsure(): void {
   mkdirSync(OTTO_DIR, { recursive: true });
 }
 
-// ── Vault registry ──
+// ── Vault registry (Supabase) ──
 
-type UserVaultRegistry = Record<string, Partial<Record<SupportedChain, string>>>;
-
-function loadUserVaults(): UserVaultRegistry {
-  if (!existsSync(USER_VAULTS_PATH)) return {};
-  try { return JSON.parse(readFileSync(USER_VAULTS_PATH, "utf8")); } catch { return {}; }
+async function getVaultFromDb(userId: string, chain: SupportedChain): Promise<string | null> {
+  const { data } = await supabase
+    .from("otto_vaults")
+    .select("vault_address")
+    .eq("user_id", userId)
+    .eq("chain", chain)
+    .single();
+  return data?.vault_address ?? null;
 }
 
-function saveUserVaults(registry: UserVaultRegistry): void {
-  ottoDirEnsure();
-  writeFileSync(USER_VAULTS_PATH, JSON.stringify(registry, null, 2));
+async function getVaultsForUser(userId: string): Promise<Partial<Record<SupportedChain, string>>> {
+  const { data } = await supabase
+    .from("otto_vaults")
+    .select("chain, vault_address")
+    .eq("user_id", userId);
+  const result: Partial<Record<SupportedChain, string>> = {};
+  for (const row of data ?? []) result[row.chain as SupportedChain] = row.vault_address;
+  return result;
+}
+
+async function upsertVault(userId: string, chain: SupportedChain, vaultAddress: string): Promise<void> {
+  await supabase.from("otto_vaults").upsert(
+    { user_id: userId, chain, vault_address: vaultAddress.toLowerCase() },
+    { onConflict: "user_id,chain" }
+  );
+}
+
+async function deleteVaultsForUser(userId: string): Promise<void> {
+  await supabase.from("otto_vaults").delete().eq("user_id", userId);
 }
 
 // ── DAC contracts cache (vault → { shareToken, governor, ceo }) ──
@@ -720,19 +731,33 @@ function cacheDacContracts(dac: { vault: string; shareToken: string; governor: s
   saveDacContracts(registry);
 }
 
-// ── User registry (Telegram user_id → eth_address) ──
+// ── User registry (Supabase) ──
 
-type UserRecord = { eth_address?: string };
-type UserRegistry = Record<string, UserRecord>;
+type UserRecord = { eth_address?: string; tg_id?: number; tg_username?: string; tg_first_name?: string };
 
-function loadUsers(): UserRegistry {
-  if (!existsSync(USERS_PATH)) return {};
-  try { return JSON.parse(readFileSync(USERS_PATH, "utf8")); } catch { return {}; }
+async function getUserFromDb(userId: string): Promise<UserRecord | null> {
+  const { data } = await supabase
+    .from("otto_users")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+  return data;
 }
 
-function saveUsers(registry: UserRegistry): void {
-  ottoDirEnsure();
-  writeFileSync(USERS_PATH, JSON.stringify(registry, null, 2));
+async function getUserByAddress(ethAddress: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("otto_users")
+    .select("user_id")
+    .eq("eth_address", ethAddress.toLowerCase())
+    .single();
+  return data?.user_id ?? null;
+}
+
+async function upsertUser(userId: string, record: Partial<UserRecord>): Promise<void> {
+  await supabase.from("otto_users").upsert(
+    { user_id: userId, ...record },
+    { onConflict: "user_id" }
+  );
 }
 
 // ── Invoice registry ──
@@ -904,8 +929,7 @@ export async function handleGetUserVault(params: GetUserVaultParams): Promise<st
   const { user_id } = params;
   if (!user_id) throw new Error("user_id is required");
 
-  const registry = loadUserVaults();
-  const userVaults = registry[user_id] ?? {};
+  const userVaults = await getVaultsForUser(user_id);
 
   if (params.chain) {
     const chain = resolveChain(params.chain);
@@ -954,11 +978,9 @@ export async function handleRegisterUserAddress(params: RegisterUserAddressParam
   }
   const checksummed = getAddress(eth_address);
 
-  const users = loadUsers();
-  const previous = users[user_id]?.eth_address;
-  if (!users[user_id]) users[user_id] = {};
-  users[user_id].eth_address = checksummed;
-  saveUsers(users);
+  const existing = await getUserFromDb(user_id);
+  const previous = existing?.eth_address;
+  await upsertUser(user_id, { eth_address: checksummed.toLowerCase() });
 
   return JSON.stringify({
     success: true,
@@ -985,8 +1007,7 @@ export async function handleGetUserAddress(params: GetUserAddressParams): Promis
   const { user_id } = params;
   if (!user_id) throw new Error("user_id is required");
 
-  const users = loadUsers();
-  const record = users[user_id];
+  const record = await getUserFromDb(user_id);
 
   return JSON.stringify({
     user_id,
@@ -1013,8 +1034,8 @@ export async function handleTransferVaultAdmin(params: TransferVaultAdminParams)
 
   if (!user_id) throw new Error("user_id is required");
 
-  const users = loadUsers();
-  const userEthAddr = users[user_id]?.eth_address;
+  const userRecord = await getUserFromDb(user_id);
+  const userEthAddr = userRecord?.eth_address;
   if (!userEthAddr) {
     return JSON.stringify({
       success: false,
@@ -1026,8 +1047,7 @@ export async function handleTransferVaultAdmin(params: TransferVaultAdminParams)
   if (params.vault_address) {
     vaultAddr = params.vault_address as Address;
   } else {
-    const registry = loadUserVaults();
-    const addr = registry[user_id]?.[chain];
+    const addr = await getVaultFromDb(user_id, chain);
     if (!addr) {
       return JSON.stringify({
         success: false,
@@ -1240,8 +1260,7 @@ export async function handleCreateInvoice(params: CreateInvoiceParams): Promise<
   if (params.vault_address) {
     vaultAddr = params.vault_address;
   } else if (params.user_id) {
-    const registry = loadUserVaults();
-    const addr = registry[params.user_id]?.[chain];
+    const addr = await getVaultFromDb(params.user_id, chain);
     if (!addr) throw new Error(`No vault for user ${params.user_id} on ${chain}. Deploy one first.`);
     vaultAddr = addr;
   } else {
