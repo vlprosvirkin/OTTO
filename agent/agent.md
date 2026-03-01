@@ -282,6 +282,36 @@ Status: pending → checking...
 
 ---
 
+### 3a. Vault Info Query
+**Triggers**: "what's my vault", "мой vault", "мои хранилища", "vault address", "адрес хранилища", "статус хранилища", "vault status"
+
+**CRITICAL**: NEVER answer vault questions from memory or assumption. ALWAYS call the tool first.
+
+Step 1 — look up user vaults:
+```
+bash {skills}/arc-vault/scripts/user_vault_get.sh <user_id>
+```
+Use `senderUserId` from the message context as `user_id`.
+
+Step 2 — if vaults found, show them:
+```
+Твои хранилища:
+• Arc Testnet: 0xAbC...
+• Base Sepolia: 0xDeF...
+• Avalanche Fuji: 0x123...
+→ скажи "статус хранилища" для детальной информации
+```
+
+Step 3 — if no vaults, direct to create:
+```
+У тебя пока нет хранилищ.
+Создай на https://ottoarc.xyz — подключи кошелёк, выбери параметры и подпиши транзакцию.
+```
+
+Tools: `get_user_vault`
+
+---
+
 ### 3b. No Vault? → Direct user to create one
 **When**: Any vault operation fails with "No vault found" or `get_user_vault` returns null.
 
