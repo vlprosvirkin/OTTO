@@ -107,6 +107,17 @@ import {
   handleGovAddMembers,
   handleGovDacs,
 } from "./tools/governance.js";
+import {
+  handleSatelliteStatus,
+  handleSatelliteTransfer,
+  handleSatelliteDeposit,
+  handleSatelliteCeoTransfer,
+  handleSatelliteWithdraw,
+  handleSatelliteSetLimits,
+  handleSatelliteWhitelist,
+  handleSatelliteWhitelistToggle,
+  handleSatellitePause,
+} from "./tools/vault-satellite.js";
 
 const CHAIN_ENUM = z.enum(["arcTestnet", "baseSepolia", "avalancheFuji"]);
 
@@ -1182,6 +1193,162 @@ server.registerTool(
   },
   async ({ vault_address }) => ({
     content: [{ type: "text" as const, text: await handleVaultV2Finalize({ vault_address }) }],
+  })
+);
+
+// ─── Satellite Vault Tools ──────────────────────────────────────────────────
+
+const SAT_CHAIN_ENUM = z.enum(["baseSepolia", "avalancheFuji"]);
+
+server.tool(
+  "satellite_status",
+  [
+    "Get the status of an OTTOSatelliteVault on a non-home chain.",
+    "Returns: USDC balance, spending limits, roles (CEO, agent),",
+    "whitelist and pause state. Lightweight — no governance or yield.",
+  ].join(" "),
+  {
+    vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+    chain: SAT_CHAIN_ENUM.describe("Satellite chain: baseSepolia | avalancheFuji"),
+  },
+  async ({ vault_address, chain }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteStatus({ vault_address, chain }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_transfer",
+  {
+    title: "Agent transfer USDC (satellite)",
+    description:
+      "Agent: transfer USDC from a satellite vault to a recipient. " +
+      "Subject to per-tx and daily limits. Pre-checks canTransfer().",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      to: z.string().describe("Recipient address"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, chain, to, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteTransfer({ vault_address, chain, to, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_deposit",
+  {
+    title: "Deposit USDC into satellite vault",
+    description:
+      "Deposit USDC into a satellite vault. Automatically approves USDC spend. " +
+      "Use this to fund satellite vaults after cross-chain transfer.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      amount_usdc: z.number().positive().describe("Amount of USDC to deposit"),
+    },
+  },
+  async ({ vault_address, chain, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteDeposit({ vault_address, chain, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_ceo_transfer",
+  {
+    title: "CEO transfer USDC (satellite)",
+    description: "CEO: transfer USDC from satellite vault to a recipient. Not subject to agent limits.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      to: z.string().describe("Recipient address"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, chain, to, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteCeoTransfer({ vault_address, chain, to, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_withdraw",
+  {
+    title: "CEO withdraw from satellite vault",
+    description: "CEO: withdraw USDC from satellite vault to CEO address.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      amount_usdc: z.number().positive().describe("Amount in USDC"),
+    },
+  },
+  async ({ vault_address, chain, amount_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteWithdraw({ vault_address, chain, amount_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_set_limits",
+  {
+    title: "Set spending limits (satellite)",
+    description: "CEO: set per-transaction and daily spending limits for the agent on a satellite vault.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      max_per_tx_usdc: z.number().positive().describe("Max USDC per transaction"),
+      daily_limit_usdc: z.number().positive().describe("Daily USDC limit"),
+    },
+  },
+  async ({ vault_address, chain, max_per_tx_usdc, daily_limit_usdc }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteSetLimits({ vault_address, chain, max_per_tx_usdc, daily_limit_usdc }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_whitelist",
+  {
+    title: "Add/remove whitelist (satellite)",
+    description: "CEO: add or remove an address from the satellite vault whitelist.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      address: z.string().describe("Address to whitelist/unwhitelist"),
+      allowed: z.boolean().describe("true to add, false to remove"),
+    },
+  },
+  async ({ vault_address, chain, address, allowed }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteWhitelist({ vault_address, chain, address, allowed }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_whitelist_toggle",
+  {
+    title: "Enable/disable whitelist (satellite)",
+    description: "CEO: enable or disable the whitelist on a satellite vault.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      enabled: z.boolean().describe("true to enable, false to disable"),
+    },
+  },
+  async ({ vault_address, chain, enabled }) => ({
+    content: [{ type: "text" as const, text: await handleSatelliteWhitelistToggle({ vault_address, chain, enabled }) }],
+  })
+);
+
+server.registerTool(
+  "satellite_pause",
+  {
+    title: "Pause/unpause satellite vault",
+    description: "CEO: pause or unpause a satellite vault. When paused, agent transfers are blocked.",
+    inputSchema: {
+      vault_address: z.string().describe("OTTOSatelliteVault contract address"),
+      chain: SAT_CHAIN_ENUM.describe("Satellite chain"),
+      paused: z.boolean().describe("true to pause, false to unpause"),
+    },
+  },
+  async ({ vault_address, chain, paused }) => ({
+    content: [{ type: "text" as const, text: await handleSatellitePause({ vault_address, chain, paused }) }],
   })
 );
 
